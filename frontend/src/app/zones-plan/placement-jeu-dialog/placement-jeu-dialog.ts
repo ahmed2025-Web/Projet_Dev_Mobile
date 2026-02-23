@@ -62,7 +62,7 @@ export class PlacementJeuDialog {
   
   totalTables = signal(0);
 
-  // Estimation du nombre de tables nécessaires (arrondies supérieurement)
+  // Estimation du nombre de tables nécessaires 
   estimatedTables = computed(() => {
     const jeu = this.selectedJeu();
     return jeu ? Math.ceil(jeu.tables_allouees) : 0;

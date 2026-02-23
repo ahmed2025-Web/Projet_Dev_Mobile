@@ -12,7 +12,6 @@ router.get('/festival/:festivalId', requireActivatedAccount(), requirePermission
       const { festivalId } = req.params;
       try {
         // on utilise la vue qui calcule déjà tables_disponibles, tables_reservees
-        // La vue filtre automatiquement les reservations absentes/considerees absentes
         const result = await pool.query(`
           SELECT 
             id,
@@ -215,7 +214,6 @@ router.patch('/:id', requireActivatedAccount(), requirePermission('zonesTarifair
       const values: any[] = [];
       let paramCount = 1;
 
-      // pour generer automatiquement la requete sql (cf en dessous)
       for (const [key, value] of Object.entries(updates)) {
         if (value !== undefined) {
           fields.push(`${key} = $${paramCount}`);

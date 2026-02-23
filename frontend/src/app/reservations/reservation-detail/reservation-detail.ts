@@ -136,7 +136,6 @@ export class ReservationDetail {
       next: (detail) => {
         this.reservation.set(detail);
         this.loading.set(false);
-        // Charge the invoice if any
         this.loadFacture();
       },
       error: (err) => {

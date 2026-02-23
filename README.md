@@ -47,13 +47,33 @@ Mot de passe: admin
 
 ---
 
-## Accéder à l'application déployée (sur le serveur de l'école)
+## Accéder à l'application déployée (sur la VM)
 
-Si vous etes à l'ecole (connecté avec le reseau de l'ecole) ou si vous êtes connecté au VPN de Polytech, vous pouvez y accéder directement :
+L'application est déployée sur une **machine virtuelle (VM)** configurée avec Docker. Cette VM est accessible depuis le réseau de l'école ou via VPN de Polytech.
 
-**Application** : https://162.38.111.34:8080/login
+### URL d'accès
 
-**Gérer la base de données** : http://162.38.111.34:8081 (mêmes identifiants)
+- **Application** : https://162.38.111.34:8080/login
+- **Gérer la base de données** : http://162.38.111.34:8081 (Adminer)
+  - Utilisateur : `secureapp`
+  - Mot de passe : `secureapp`
+  - Base de données : `secureapp`
+
+### Déploiement sur la VM
+
+L'application est lancée via Docker Compose en mode production:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d
+```
+
+Cette configuration configure:
+- **Frontend** (Angular + Nginx) sur le port 8080
+- **Backend** (Node.js + Express) sur le port 4000
+- **Base de données** (PostgreSQL) sur le port 5432
+- **Adminer** (gestion DB) sur le port 8081
+
+Les containers redémarrent automatiquement en cas d'arrêt grâce à `restart: unless-stopped`.
 
 
 ---

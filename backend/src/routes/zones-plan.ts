@@ -442,7 +442,7 @@ router.patch('/jeux/:jeuFestivalId/placer', requireActivatedAccount(), requirePe
           error: `Espace insuffisant dans la zone. Capacité: ${nombre_tables_total} tables, demandé: ${totalApresPlacement} tables` 
         });
       }
-      // Mettre à jour le jeu_festival (ne pas modifier tables_allouees - c'est l'estimation originale)
+      // Mettre à jour le jeu_festival 
       const result = await pool.query(
         `UPDATE jeux_festival 
          SET zone_plan_id = $1,

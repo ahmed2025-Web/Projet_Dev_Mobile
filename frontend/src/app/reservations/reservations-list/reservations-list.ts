@@ -94,8 +94,9 @@ export class ReservationsList {
   });
 
   constructor() {
+    // extraire l'id du festival de l'URL : /festival/${festivalId}
     this.route.params.subscribe(params => {
-      const id = +params['id'];
+      const id = +params['id'];   // + pour convertir string en number 
       if (id) {
         this.festivalId.set(id);
         this.loadData();
