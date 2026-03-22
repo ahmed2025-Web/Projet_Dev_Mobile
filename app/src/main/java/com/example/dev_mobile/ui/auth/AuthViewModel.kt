@@ -12,7 +12,8 @@ import kotlinx.coroutines.launch
 data class AuthUiState(
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
-    val isSuccess: Boolean = false
+    val isSuccess: Boolean = false,
+    val isPending: Boolean = false   // compte en attente de validation
 )
 
 class AuthViewModel : ViewModel() {
@@ -30,8 +31,9 @@ class AuthViewModel : ViewModel() {
         viewModelScope.launch {
             _uiState.value = AuthUiState(isLoading = true)
             _uiState.value = when (val result = repository.login(login, password)) {
-                is AuthResult.Success -> AuthUiState(isSuccess = true)
-                is AuthResult.Error   -> AuthUiState(errorMessage = result.message)
+                is AuthResult.Success           -> AuthUiState(isSuccess = true)
+                is AuthResult.PendingValidation -> AuthUiState(isPending = true)
+                is AuthResult.Error             -> AuthUiState(errorMessage = result.message)
             }
         }
     }
@@ -44,15 +46,18 @@ class AuthViewModel : ViewModel() {
         viewModelScope.launch {
             _uiState.value = AuthUiState(isLoading = true)
             _uiState.value = when (val result = repository.register(nom, prenom, email, login, password)) {
-                is AuthResult.Success -> AuthUiState(isSuccess = true)
-                is AuthResult.Error   -> AuthUiState(errorMessage = result.message)
+                is AuthResult.Success           -> AuthUiState(isSuccess = true)
+                is AuthResult.PendingValidation -> AuthUiState(isPending = true)
+                is AuthResult.Error             -> AuthUiState(errorMessage = result.message)
             }
         }
     }
 
     fun logout() {
+        _uiState.value = AuthUiState(isSuccess = false)
         viewModelScope.launch {
             repository.logout()
+            com.example.dev_mobile.session.UserSession.clear()
             _uiState.value = AuthUiState()
         }
     }

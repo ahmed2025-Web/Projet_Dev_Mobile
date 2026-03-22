@@ -16,15 +16,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.dev_mobile.session.UserSession
 
 @Composable
-fun HomeScreen(
+fun PendingScreen(
     onLogout: () -> Unit,
     viewModel: AuthViewModel = viewModel()
 ) {
-    val roleColor = Color(UserSession.getRoleColor())
-
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -45,70 +42,51 @@ fun HomeScreen(
                     .padding(36.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Logo
+                // Icône horloge
                 Box(
                     modifier = Modifier
-                        .size(72.dp)
+                        .size(80.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFFCBDAEF)),
+                        .background(Color(0xFFFFF3E0)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("🎮", fontSize = 32.sp)
+                    Text("⏳", fontSize = 36.sp)
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
                 Text(
-                    text = "FestiJeux",
-                    fontSize = 24.sp,
+                    text = "Compte en attente",
+                    fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1A1A2E)
+                    color = Color(0xFF1A1A2E),
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = "Votre compte a bien été créé mais doit être validé par un administrateur avant de pouvoir accéder à l'application.",
+                    fontSize = 14.sp,
+                    color = Color(0xFF8A8FA3),
+                    textAlign = TextAlign.Center,
+                    lineHeight = 22.sp
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Login affiché
-                Text(
-                    text = "Bonjour, ${UserSession.login ?: ""}",
-                    fontSize = 15.sp,
-                    color = Color(0xFF8A8FA3)
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Badge rôle
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(roleColor.copy(alpha = 0.12f))
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1))
                 ) {
                     Text(
-                        text = UserSession.getRoleLabel(),
+                        text = " Contactez un administrateur FestiJeux pour activer votre accès.",
                         fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = roleColor
+                        color = Color(0xFFE65100),
+                        modifier = Modifier.padding(12.dp),
+                        textAlign = TextAlign.Center
                     )
-                }
-
-                Spacer(modifier = Modifier.height(32.dp))
-
-                // Permissions visibles selon le rôle
-                if (UserSession.canAdmin()) {
-                    PermissionItem("✅ Gestion des festivals")
-                    PermissionItem("✅ Gestion des utilisateurs")
-                    PermissionItem("✅ Gestion des réservations")
-                    PermissionItem("✅ Facturation")
-                } else if (UserSession.canManage()) {
-                    PermissionItem("✅ Consultation des festivals")
-                    PermissionItem("✅ Gestion des réservations")
-                    PermissionItem("✅ Placement des jeux")
-                } else if (UserSession.isBenevole()) {
-                    PermissionItem("✅ Consultation du festival courant")
-                    PermissionItem("✅ Consultation des jeux et zones")
-                } else if (UserSession.isVisiteur()) {
-                    PermissionItem("✅ Consultation publique des jeux")
-                    PermissionItem("✅ Consultation du plan")
                 }
 
                 Spacer(modifier = Modifier.height(32.dp))
@@ -122,7 +100,7 @@ fun HomeScreen(
                         .fillMaxWidth()
                         .height(50.dp),
                     shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F))
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A1A2E))
                 ) {
                     Text(
                         "Se déconnecter",
@@ -134,16 +112,4 @@ fun HomeScreen(
             }
         }
     }
-}
-
-@Composable
-private fun PermissionItem(text: String) {
-    Text(
-        text = text,
-        fontSize = 13.sp,
-        color = Color(0xFF4A4A6A),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 3.dp)
-    )
 }
