@@ -17,6 +17,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 @Composable
 fun HomeScreen(
     onLogout: () -> Unit,
+    onNavigateToJeux: () -> Unit = {},
+    onNavigateToEditeurs: () -> Unit = {},
     viewModel: AuthViewModel = viewModel()
 ) {
     Box(
@@ -45,6 +47,26 @@ fun HomeScreen(
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("Vous êtes connecté ✓", fontSize = 15.sp, color = Color(0xFF4A7FC1))
                 Spacer(modifier = Modifier.height(40.dp))
+
+                Button(
+                    onClick = onNavigateToJeux,
+                    modifier = Modifier.fillMaxWidth().height(50.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4A7FC1))
+                ) {
+                    Text("Gestion des Jeux", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Button(
+                    onClick = onNavigateToEditeurs,
+                    modifier = Modifier.fillMaxWidth().height(50.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+                ) {
+                    Text("Gestion des Éditeurs", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                }
+                Spacer(modifier = Modifier.height(12.dp))
 
                 Button(
                     onClick = { viewModel.logout(); onLogout() },

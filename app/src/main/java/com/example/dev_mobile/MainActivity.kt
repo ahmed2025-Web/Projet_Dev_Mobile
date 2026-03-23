@@ -19,9 +19,13 @@ import com.example.dev_mobile.ui.auth.AuthViewModel
 import com.example.dev_mobile.ui.auth.HomeScreen
 import com.example.dev_mobile.ui.auth.LoginScreen
 import com.example.dev_mobile.ui.auth.RegisterScreen
+import com.example.dev_mobile.ui.jeux.screens.JeuxListScreen
+import com.example.dev_mobile.ui.jeux.viewmodel.JeuxViewModel
+import com.example.dev_mobile.ui.editeurs.screens.EditeurListScreen
+import com.example.dev_mobile.ui.editeurs.viewmodel.EditeurViewModel
 import com.example.dev_mobile.ui.theme.DevMobileTheme
 
-enum class Screen { LOGIN, REGISTER, HOME }
+enum class Screen { LOGIN, REGISTER, HOME, JEUX, EDITEURS }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,7 +48,8 @@ class MainActivity : ComponentActivity() {
 fun AppContent() {
     var currentScreen by remember { mutableStateOf(Screen.LOGIN) }
     val authViewModel: AuthViewModel = viewModel()
-
+    val jeuxViewModel: JeuxViewModel = viewModel()
+    val editeurViewModel: EditeurViewModel = viewModel()
 
     Box(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
         when (currentScreen) {
@@ -60,7 +65,15 @@ fun AppContent() {
             )
             Screen.HOME -> HomeScreen(
                 onLogout = { currentScreen = Screen.LOGIN },
+                onNavigateToJeux = { currentScreen = Screen.JEUX },
+                onNavigateToEditeurs = { currentScreen = Screen.EDITEURS },
                 viewModel = authViewModel
+            )
+            Screen.JEUX -> JeuxListScreen(
+                viewModel = jeuxViewModel
+            )
+            Screen.EDITEURS -> EditeurListScreen(
+                viewModel = editeurViewModel
             )
         }
     }
