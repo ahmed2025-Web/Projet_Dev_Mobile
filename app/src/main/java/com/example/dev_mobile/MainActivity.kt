@@ -1,4 +1,3 @@
-
 package com.example.dev_mobile
 
 import android.os.Bundle
@@ -8,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.dev_mobile.ui.administration.AdministrationScreen
 import com.example.dev_mobile.ui.auth.AuthViewModel
 import com.example.dev_mobile.ui.auth.LoginScreen
 import com.example.dev_mobile.ui.auth.PendingScreen
@@ -77,7 +77,6 @@ fun MainApp(onLogout: () -> Unit) {
     val mainViewModel: MainViewModel = viewModel()
     val mainState by mainViewModel.uiState.collectAsStateWithLifecycle()
 
-    // Destination initiale = premier item du menu selon le rôle
     val firstDest = remember { MenuConfig.getMenuItems().firstOrNull() ?: AppDestination.Dashboard }
     var currentDestination by remember { mutableStateOf(firstDest) }
 
@@ -88,16 +87,16 @@ fun MainApp(onLogout: () -> Unit) {
         onLogout            = onLogout
     ) {
         when (currentDestination) {
-            AppDestination.Dashboard     -> DashboardScreen(festivalNom = mainState.festivalCourantNom)
-            AppDestination.Reservants    -> ReservantScreen()
-            AppDestination.Festivals     -> PlaceholderScreen("Festivals", "📅")
-            AppDestination.Reservations  -> PlaceholderScreen("Réservations", "📋")
-            AppDestination.JeuxEditeurs  -> PlaceholderScreen("Jeux & Éditeurs", "🎮")
-            AppDestination.Zones         -> PlaceholderScreen("Zones", "🗺️")
-            AppDestination.Facturation   -> PlaceholderScreen("Facturation", "💰")
-            AppDestination.Recapitulatif -> PlaceholderScreen("Récapitulatif", "📊")
-            AppDestination.Administration -> PlaceholderScreen("Administration", "⚙️")
-            AppDestination.VuesPubliques -> PlaceholderScreen("Vues publiques", "👁️")
+            AppDestination.Dashboard      -> DashboardScreen(festivalNom = mainState.festivalCourantNom)
+            AppDestination.Reservants     -> ReservantScreen()
+            AppDestination.Administration -> AdministrationScreen()
+            AppDestination.Festivals      -> PlaceholderScreen("Festivals", "📅")
+            AppDestination.Reservations   -> PlaceholderScreen("Réservations", "📋")
+            AppDestination.JeuxEditeurs   -> PlaceholderScreen("Jeux & Éditeurs", "🎮")
+            AppDestination.Zones          -> PlaceholderScreen("Zones", "🗺️")
+            AppDestination.Facturation    -> PlaceholderScreen("Facturation", "💰")
+            AppDestination.Recapitulatif  -> PlaceholderScreen("Récapitulatif", "📊")
+            AppDestination.VuesPubliques  -> PlaceholderScreen("Vues publiques", "👁️")
         }
     }
 }
