@@ -14,6 +14,7 @@ import com.example.dev_mobile.ui.auth.PendingScreen
 import com.example.dev_mobile.ui.auth.RegisterScreen
 import com.example.dev_mobile.ui.common.PlaceholderScreen
 import com.example.dev_mobile.ui.dashboard.DashboardScreen
+import com.example.dev_mobile.ui.jeuxediteurs.JeuxExpeditersScreen
 import com.example.dev_mobile.ui.layout.MainScaffold
 import com.example.dev_mobile.ui.main.MainViewModel
 import com.example.dev_mobile.ui.navigation.AppDestination
@@ -92,7 +93,7 @@ fun MainApp(onLogout: () -> Unit) {
             AppDestination.Administration -> AdministrationScreen()
             AppDestination.Festivals      -> PlaceholderScreen("Festivals", "📅")
             AppDestination.Reservations   -> PlaceholderScreen("Réservations", "📋")
-            AppDestination.JeuxEditeurs   -> PlaceholderScreen("Jeux & Éditeurs", "🎮")
+            AppDestination.JeuxEditeurs   -> JeuxExpeditersScreen()
             AppDestination.Zones          -> PlaceholderScreen("Zones", "🗺️")
             AppDestination.Facturation    -> PlaceholderScreen("Facturation", "💰")
             AppDestination.Recapitulatif  -> PlaceholderScreen("Récapitulatif", "📊")

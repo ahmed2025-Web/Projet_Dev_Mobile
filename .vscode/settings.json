@@ -1,5 +1,17 @@
 {
     "java.project.sourcePaths": [
         "app/src/main/java/com/example/dev_mobile/ui"
+    ],
+    "cSpell.language": "fr,en",
+    "cSpell.words": [
+        "Editeurs",
+        "JeuxEditeurs",
+        "Rechercher",
+        "disponible",
+        "editeur",
+        "jeuxediteurs",
+        "renseigné",
+        "Réessayer",
+        "éditeur"
     ]
 }
