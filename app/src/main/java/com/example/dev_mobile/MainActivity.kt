@@ -14,6 +14,7 @@ import com.example.dev_mobile.ui.auth.PendingScreen
 import com.example.dev_mobile.ui.auth.RegisterScreen
 import com.example.dev_mobile.ui.common.PlaceholderScreen
 import com.example.dev_mobile.ui.dashboard.DashboardScreen
+import com.example.dev_mobile.ui.festivals.FestivalScreen
 import com.example.dev_mobile.ui.layout.MainScaffold
 import com.example.dev_mobile.ui.main.MainViewModel
 import com.example.dev_mobile.ui.navigation.AppDestination
@@ -87,10 +88,12 @@ fun MainApp(onLogout: () -> Unit) {
         onLogout            = onLogout
     ) {
         when (currentDestination) {
-            AppDestination.Dashboard      -> DashboardScreen(festivalNom = mainState.festivalCourantNom)
+            AppDestination.Dashboard -> DashboardScreen(festivalNom = mainState.festivalCourantNom)
+            AppDestination.Festivals -> FestivalScreen(
+                onFestivalCourantChanged = { mainViewModel.loadFestivalCourant() }
+            )
             AppDestination.Reservants     -> ReservantScreen()
             AppDestination.Administration -> AdministrationScreen()
-            AppDestination.Festivals      -> PlaceholderScreen("Festivals", "📅")
             AppDestination.Reservations   -> PlaceholderScreen("Réservations", "📋")
             AppDestination.JeuxEditeurs   -> PlaceholderScreen("Jeux & Éditeurs", "🎮")
             AppDestination.Zones          -> PlaceholderScreen("Zones", "🗺️")
