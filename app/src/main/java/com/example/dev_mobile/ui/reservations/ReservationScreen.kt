@@ -44,7 +44,7 @@ private val canDelete get() = UserSession.canAdmin()
 // ── Helpers workflow ──────────────────────────────────────────────────────────
 
 val ETATS_CONTACT = listOf(
-    "pas_contacte", "contacte", "en_discussion", "reserve",
+    "contacte", "en_discussion", "reserve",
     "liste_jeux_demandee", "liste_jeux_obtenue", "jeux_recus"
 )
 
@@ -740,7 +740,6 @@ private fun ContactWorkflowStepper(currentEtat: String) {
             ) {
                 Text(
                     text = when(etat) {
-                        "pas_contacte" -> "❌"
                         "contacte" -> "📞"
                         "en_discussion" -> "💬"
                         "reserve" -> "✅"
