@@ -89,7 +89,13 @@ fun MainApp(onLogout: () -> Unit) {
         onLogout            = onLogout
     ) {
         when (currentDestination) {
-            AppDestination.Dashboard -> DashboardScreen(festivalNom = mainState.festivalCourantNom)
+
+            AppDestination.Dashboard -> DashboardScreen(
+                festivalNom = mainState.festivalCourantNom,
+                onNavigateToReservations = { currentDestination = AppDestination.Reservations },
+                onNavigateToFestivals    = { currentDestination = AppDestination.Festivals },
+                onNavigateToReservants   = { currentDestination = AppDestination.Reservants }
+            )
 
             AppDestination.Festivals -> FestivalScreen(
                 onFestivalCourantChanged = { mainViewModel.loadFestivalCourant() }
