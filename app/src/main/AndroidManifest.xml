@@ -3,6 +3,11 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Permet de surveiller l'état de la connexion (Wi-Fi/Data).
+         Indispensable pour le mode offline, sinon l'app crash (SecurityException)
+         lorsque le ConnectivityManager est interrogé. car android considere que l'etat de connection est privé sauf
+         s'elle est declarée explicitement comme public.-->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
         android:allowBackup="true"

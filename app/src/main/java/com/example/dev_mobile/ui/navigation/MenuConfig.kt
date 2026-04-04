@@ -12,8 +12,6 @@ object MenuConfig {
             AppDestination.Reservations,
             AppDestination.JeuxEditeurs,
             AppDestination.Zones,
-            AppDestination.Facturation,
-            AppDestination.Recapitulatif,
             AppDestination.Administration,
             AppDestination.VuesPubliques
         )
@@ -24,8 +22,6 @@ object MenuConfig {
             AppDestination.Reservations,
             AppDestination.JeuxEditeurs,
             AppDestination.Zones,
-            AppDestination.Facturation,
-            AppDestination.Recapitulatif,
             AppDestination.VuesPubliques
         )
         "organisateur" -> listOf(

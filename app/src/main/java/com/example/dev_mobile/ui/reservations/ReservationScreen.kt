@@ -25,8 +25,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.dev_mobile.network.*
 import com.example.dev_mobile.session.UserSession
+import com.example.dev_mobile.ui.common.OfflineBadge
+import com.example.dev_mobile.ui.common.OfflineEmptyState
 
-// ── Palette cohérente ─────────────────────────────────────────────────────────
 private val AccentBlue   = Color(0xFF4A7FC1)
 private val TextDark     = Color(0xFF1A1A2E)
 private val TextGray     = Color(0xFF8A8FA3)
@@ -41,13 +42,7 @@ private val canCreate get() = UserSession.canManage()
 private val canEdit   get() = UserSession.canManage()
 private val canDelete get() = UserSession.canAdmin()
 
-// ── Helpers workflow ──────────────────────────────────────────────────────────
-
-val ETATS_CONTACT = listOf(
-    "contacte", "en_discussion", "reserve",
-    "liste_jeux_demandee", "liste_jeux_obtenue", "jeux_recus"
-)
-
+val ETATS_CONTACT = listOf("contacte", "en_discussion", "reserve", "liste_jeux_demandee", "liste_jeux_obtenue", "jeux_recus")
 val ETATS_PRESENCE = listOf("non_defini", "present", "considere_absent", "absent")
 
 fun etatContactLabel(etat: String) = when (etat) {
@@ -87,17 +82,21 @@ fun etatPresenceColor(etat: String): Pair<Color, Color> = when (etat) {
     else               -> Color(0xFFF5F5F5) to Color(0xFF9E9E9E)
 }
 
-// ── Écran principal ────────────────────────────────────────────────────────────
 @Composable
 fun ReservationScreen(
     festivalId: Int,
+    isOnline: Boolean = true,
     vm: ReservationViewModel = viewModel()
 ) {
     val state by vm.uiState.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
 
-    // Init avec l'id du festival
     LaunchedEffect(festivalId) { vm.init(festivalId) }
+
+    // Recharger dès que connexion revient
+    LaunchedEffect(isOnline) {
+        if (isOnline && festivalId > 0) vm.loadReservations()
+    }
 
     LaunchedEffect(state.successMessage, state.errorMessage) {
         state.successMessage?.let { snackbar.showSnackbar(it); vm.clearMessages() }
@@ -107,14 +106,15 @@ fun ReservationScreen(
     // Écran détail
     state.selectedReservation?.let { detail ->
         ReservationDetailScreen(
-            detail       = detail,
-            zonesTarifaires = state.zonesTarifaires,
-            isSubmitting = state.isSubmitting,
-            onBack       = { vm.closeDetail() },
-            onUpdateWorkflowContact = { etat -> vm.updateWorkflowContact(detail.id, etat) },
+            detail                   = detail,
+            zonesTarifaires          = state.zonesTarifaires,
+            isOnline                 = isOnline,
+            isSubmitting             = state.isSubmitting,
+            onBack                   = { vm.closeDetail() },
+            onUpdateWorkflowContact  = { etat -> vm.updateWorkflowContact(detail.id, etat) },
             onUpdateWorkflowPresence = { etat -> vm.updateWorkflowPresence(detail.id, etat) },
-            onAddContactRelance = { date, type, notes -> vm.addContactRelance(detail.id, date, type, notes) },
-            onUpdate = { nbPrises, remiseT, remiseM, notes, animer, zones ->
+            onAddContactRelance      = { date, type, notes -> vm.addContactRelance(detail.id, date, type, notes) },
+            onUpdate                 = { nbPrises, remiseT, remiseM, notes, animer, zones ->
                 vm.updateReservation(detail.id, nbPrises, remiseT, remiseM, notes, animer, zones)
             },
             onDelete = { vm.deleteReservation(detail.id) }
@@ -145,7 +145,9 @@ fun ReservationScreen(
             SnackbarHost(snackbar) { data ->
                 val isErr = data.visuals.message.startsWith("Erreur") ||
                         data.visuals.message.startsWith("Serveur") ||
-                        data.visuals.message.startsWith("Impossible")
+                        data.visuals.message.startsWith("Impossible") ||
+                        data.visuals.message.startsWith("Création") ||
+                        data.visuals.message.startsWith("Modification")
                 Card(
                     modifier = Modifier.padding(16.dp).fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
@@ -168,109 +170,123 @@ fun ReservationScreen(
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
 
-            // ── En-tête ──────────────────────────────────────────────────────
+            // En-tête
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(CardBg)
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                modifier = Modifier.fillMaxWidth().background(CardBg).padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("Réservations", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextDark)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Réservations", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextDark)
+                        if (!isOnline) {
+                            Spacer(Modifier.width(8.dp))
+                            OfflineBadge()
+                        }
+                    }
                     Text("${vm.getFilteredReservations().size} résultat(s)", fontSize = 12.sp, color = TextGray)
                 }
                 if (canCreate) {
                     Button(
-                        onClick = { vm.openCreateDialog() },
-                        shape  = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = TextDark)
-                    ) { Text("+ Nouvelle", fontSize = 13.sp, color = Color.White) }
+                        onClick  = { vm.openCreateDialog() },
+                        enabled  = isOnline,
+                        shape    = RoundedCornerShape(10.dp),
+                        colors   = ButtonDefaults.buttonColors(
+                            containerColor = TextDark,
+                            disabledContainerColor = Color(0xFFCCCCCC)
+                        )
+                    ) {
+                        Text(
+                            if (isOnline) "+ Nouvelle" else "🔒 Hors ligne",
+                            fontSize = 13.sp, color = Color.White
+                        )
+                    }
                 }
             }
 
-            // ── Filtres workflow ─────────────────────────────────────────────
+            // Filtres workflow
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(CardBg)
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth().background(CardBg)
+                    .horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // Filtre "Tous"
-                FilterChipItem(
-                    label = "Tous (${state.reservations.size})",
-                    selected = state.activeFilter == null,
-                    bgColor = Color(0xFFE8F0FB),
-                    textColor = AccentBlue,
-                    onClick = { vm.setFilter(null) }
-                )
+                FilterChipItem("Tous (${state.reservations.size})", state.activeFilter == null,
+                    Color(0xFFE8F0FB), AccentBlue) { vm.setFilter(null) }
                 ETATS_CONTACT.forEach { etat ->
                     val count = state.reservations.count { it.etat_contact == etat }
                     if (count > 0) {
                         val (bg, fg) = etatContactColor(etat)
-                        FilterChipItem(
-                            label = "${etatContactLabel(etat)} ($count)",
-                            selected = state.activeFilter == etat,
-                            bgColor = bg,
-                            textColor = fg,
-                            onClick = { vm.setFilter(etat) }
-                        )
+                        FilterChipItem("${etatContactLabel(etat)} ($count)", state.activeFilter == etat,
+                            bg, fg) { vm.setFilter(etat) }
                     }
                 }
             }
             HorizontalDivider(color = DividerCol)
 
-            // ── Contenu ──────────────────────────────────────────────────────
             val displayed = vm.getFilteredReservations()
             when {
                 state.isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = AccentBlue)
                 }
+                displayed.isEmpty() && !isOnline -> OfflineEmptyState(
+                    message  = "Aucune réservation en cache",
+                    subtitle = "Reconnectez-vous pour charger les données"
+                )
                 displayed.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("📋", fontSize = 48.sp)
-                        Spacer(Modifier.height(12.dp))
+                        Text("📋", fontSize = 48.sp); Spacer(Modifier.height(12.dp))
                         Text("Aucune réservation", color = TextGray, fontSize = 14.sp)
                         Spacer(Modifier.height(8.dp))
-                        TextButton(onClick = { vm.loadReservations() }) {
-                            Text("Rafraîchir", color = AccentBlue)
-                        }
+                        TextButton(onClick = { vm.loadReservations() }) { Text("Rafraîchir", color = AccentBlue) }
                     }
                 }
-                else -> LazyColumn(
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(displayed, key = { it.id }) { res ->
-                        ReservationCard(
-                            reservation = res,
-                            onContactClick  = { vm.updateWorkflowContact(res.id, nextEtatContact(res.etat_contact)) },
-                            onClick     = { vm.openDetail(res.id) }
-                        )
+                else -> {
+                    // Banner cache
+                    if (state.isFromCache) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(10.dp), color = Color(0xFFFFF3E0)
+                        ) {
+                            Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("📡", fontSize = 14.sp); Spacer(Modifier.width(8.dp))
+                                Text("Données en cache — modification impossible hors ligne",
+                                    fontSize = 12.sp, color = Color(0xFFE65100), fontWeight = FontWeight.Medium)
+                            }
+                        }
                     }
-                    item { Spacer(Modifier.height(16.dp)) }
+                    LazyColumn(
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(displayed, key = { it.id }) { res ->
+                            ReservationCard(
+                                reservation    = res,
+                                isOnline       = isOnline,
+                                onContactClick = {
+                                    if (isOnline) vm.updateWorkflowContact(res.id, nextEtatContact(res.etat_contact))
+                                },
+                                onClick        = { vm.openDetail(res.id) }
+                            )
+                        }
+                        item { Spacer(Modifier.height(16.dp)) }
+                    }
                 }
             }
         }
     }
 
-    // Dialog création
-    if (state.showCreateDialog) {
+    if (state.showCreateDialog && isOnline) {
         CreateReservationDialog(
-            reservants = state.reservants,
+            reservants      = state.reservants,
             zonesTarifaires = state.zonesTarifaires,
-            isLoading  = state.isSubmitting,
-            onDismiss  = { vm.closeCreateDialog() },
-            onConfirm  = { reservantId, nbPrises, notes, animer, zones ->
+            isLoading       = state.isSubmitting,
+            onDismiss       = { vm.closeCreateDialog() },
+            onConfirm       = { reservantId, nbPrises, notes, animer, zones ->
                 vm.createReservation(reservantId, nbPrises, notes, animer, zones)
             }
         )
     }
 }
 
-// ── Avancer le workflow contact ───────────────────────────────────────────────
 private fun nextEtatContact(current: String): String = when (current) {
     "pas_contacte"        -> "contacte"
     "contacte"            -> "en_discussion"
@@ -281,133 +297,82 @@ private fun nextEtatContact(current: String): String = when (current) {
     else                  -> current
 }
 
-// ── Chip de filtre ────────────────────────────────────────────────────────────
 @Composable
-private fun FilterChipItem(
-    label: String,
-    selected: Boolean,
-    bgColor: Color,
-    textColor: Color,
-    onClick: () -> Unit
-) {
-    Surface(
-        shape  = RoundedCornerShape(20.dp),
-        color  = if (selected) bgColor else Color(0xFFF5F5F5),
-        modifier = Modifier.clickable { onClick() }
-    ) {
-        Text(
-            label,
-            fontSize = 11.sp,
+private fun FilterChipItem(label: String, selected: Boolean, bgColor: Color, textColor: Color, onClick: () -> Unit) {
+    Surface(shape = RoundedCornerShape(20.dp), color = if (selected) bgColor else Color(0xFFF5F5F5),
+        modifier = Modifier.clickable { onClick() }) {
+        Text(label, fontSize = 11.sp,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
             color = if (selected) textColor else TextGray,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-        )
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
     }
 }
 
-// ── Card réservation ──────────────────────────────────────────────────────────
 @Composable
 private fun ReservationCard(
     reservation: ReservationDto,
+    isOnline: Boolean,
     onContactClick: () -> Unit,
     onClick: () -> Unit
 ) {
-    val (contactBg, contactFg) = etatContactColor(reservation.etat_contact)
+    val (contactBg, contactFg)   = etatContactColor(reservation.etat_contact)
     val (presenceBg, presenceFg) = etatPresenceColor(reservation.etat_presence)
 
-    Card(
-        modifier  = Modifier.fillMaxWidth().clickable { onClick() },
-        shape     = RoundedCornerShape(14.dp),
-        colors    = CardDefaults.cardColors(containerColor = CardBg),
-        elevation = CardDefaults.cardElevation(2.dp)
-    ) {
+    Card(modifier = Modifier.fillMaxWidth().clickable { onClick() },
+        shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = CardBg),
+        elevation = CardDefaults.cardElevation(2.dp)) {
         Column(Modifier.padding(16.dp)) {
-            // En-tête
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier.size(44.dp).clip(CircleShape).background(Color(0xFFE8F0FB)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(reservation.reservant_nom.take(1).uppercase(),
-                        fontSize = 18.sp, fontWeight = FontWeight.Bold, color = AccentBlue)
+                Box(Modifier.size(44.dp).clip(CircleShape).background(Color(0xFFE8F0FB)), contentAlignment = Alignment.Center) {
+                    Text(reservation.reservant_nom.take(1).uppercase(), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = AccentBlue)
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(reservation.reservant_nom, fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold, color = TextDark)
-                    Text(reservation.type_reservant.replaceFirstChar { it.uppercase() },
-                        fontSize = 12.sp, color = TextGray)
+                    Text(reservation.reservant_nom, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextDark)
+                    Text(reservation.type_reservant.replaceFirstChar { it.uppercase() }, fontSize = 12.sp, color = TextGray)
                 }
-                // Montant brut
-                if (reservation.montant_brut > 0) {
-                    Text("%.0f €".format(reservation.montant_brut),
-                        fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextDark)
-                }
+                if (reservation.montant_brut > 0)
+                    Text("%.0f €".format(reservation.montant_brut), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextDark)
             }
-
             Spacer(Modifier.height(10.dp))
-
-            // Badges workflow
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Badge contact (cliquable pour avancer le workflow)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = contactBg,
+                    shape = RoundedCornerShape(10.dp), color = contactBg,
                     modifier = Modifier.clickable(
-                        enabled = canEdit && reservation.etat_contact != "jeux_recus"
+                        enabled = canEdit && isOnline && reservation.etat_contact != "jeux_recus"
                     ) { onContactClick() }
                 ) {
-                    Row(
-                        Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(etatContactLabel(reservation.etat_contact),
-                            fontSize = 11.sp, color = contactFg, fontWeight = FontWeight.SemiBold)
-                        if (canEdit && reservation.etat_contact != "jeux_recus") {
-                            Spacer(Modifier.width(3.dp))
-                            Text("›", fontSize = 11.sp, color = contactFg)
+                    Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(etatContactLabel(reservation.etat_contact), fontSize = 11.sp, color = contactFg, fontWeight = FontWeight.SemiBold)
+                        if (canEdit && isOnline && reservation.etat_contact != "jeux_recus") {
+                            Spacer(Modifier.width(3.dp)); Text("›", fontSize = 11.sp, color = contactFg)
                         }
                     }
                 }
-
-                // Badge présence (si défini)
                 if (reservation.etat_presence != "non_defini") {
                     Surface(shape = RoundedCornerShape(10.dp), color = presenceBg) {
-                        Text(etatPresenceLabel(reservation.etat_presence),
-                            fontSize = 11.sp, color = presenceFg, fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                        Text(etatPresenceLabel(reservation.etat_presence), fontSize = 11.sp, color = presenceFg,
+                            fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
                     }
                 }
             }
-
-            // Stats
             Spacer(Modifier.height(8.dp))
             HorizontalDivider(color = DividerCol)
             Spacer(Modifier.height(6.dp))
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                if (reservation.nb_tables_reservees > 0)
-                    Text("🪑 ${reservation.nb_tables_reservees} table(s)", fontSize = 11.sp, color = TextGray)
-                if (reservation.nb_jeux > 0)
-                    Text("🎮 ${reservation.nb_jeux} jeu(x)", fontSize = 11.sp, color = TextGray)
-                reservation.date_dernier_contact?.take(10)?.let {
-                    Text("📅 $it", fontSize = 11.sp, color = TextGray)
-                }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (reservation.nb_tables_reservees > 0) Text("🪑 ${reservation.nb_tables_reservees} table(s)", fontSize = 11.sp, color = TextGray)
+                if (reservation.nb_jeux > 0) Text("🎮 ${reservation.nb_jeux} jeu(x)", fontSize = 11.sp, color = TextGray)
+                reservation.date_dernier_contact?.take(10)?.let { Text("📅 $it", fontSize = 11.sp, color = TextGray) }
             }
         }
     }
 }
 
-// ── Écran détail ──────────────────────────────────────────────────────────────
 @Composable
 private fun ReservationDetailScreen(
     detail: ReservationDetailDto,
     zonesTarifaires: List<ZoneTarifaireDto>,
+    isOnline: Boolean,
     isSubmitting: Boolean,
     onBack: () -> Unit,
     onUpdateWorkflowContact: (String) -> Unit,
@@ -416,81 +381,65 @@ private fun ReservationDetailScreen(
     onUpdate: (Int, Int, Double, String?, Boolean, List<ZoneReserveeRequest>) -> Unit,
     onDelete: () -> Unit
 ) {
-    var showEditDialog         by remember { mutableStateOf(false) }
-    var showDeleteDialog       by remember { mutableStateOf(false) }
-    var showAddRelanceDialog   by remember { mutableStateOf(false) }
-    var showContactDropdown    by remember { mutableStateOf(false) }
-    var showPresenceDropdown   by remember { mutableStateOf(false) }
+    var showEditDialog       by remember { mutableStateOf(false) }
+    var showDeleteDialog     by remember { mutableStateOf(false) }
+    var showAddRelanceDialog by remember { mutableStateOf(false) }
+    var showContactDropdown  by remember { mutableStateOf(false) }
+    var showPresenceDropdown by remember { mutableStateOf(false) }
 
-    val (contactBg, contactFg) = etatContactColor(detail.etat_contact)
+    val (contactBg, contactFg)   = etatContactColor(detail.etat_contact)
     val (presenceBg, presenceFg) = etatPresenceColor(detail.etat_presence)
 
     Column(Modifier.fillMaxSize().background(PageBg)) {
         // Header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(CardBg)
-                .padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(onClick = onBack) {
-                Text("← Retour", color = AccentBlue, fontWeight = FontWeight.SemiBold)
-            }
+        Row(Modifier.fillMaxWidth().background(CardBg).padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = onBack) { Text("← Retour", color = AccentBlue, fontWeight = FontWeight.SemiBold) }
             Column(Modifier.weight(1f)) {
-                Text(detail.reservant_nom, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextDark)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(detail.reservant_nom, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextDark)
+                    if (!isOnline) { Spacer(Modifier.width(6.dp)); OfflineBadge() }
+                }
                 Text(detail.festival_nom, fontSize = 11.sp, color = TextGray)
             }
-            if (canEdit) {
-                TextButton(onClick = { showEditDialog = true }) {
-                    Text("✏️", fontSize = 18.sp)
-                }
-            }
-            if (canDelete) {
-                TextButton(onClick = { showDeleteDialog = true }) {
-                    Text("🗑", fontSize = 18.sp, color = ErrorRed)
-                }
-            }
+            if (canEdit && isOnline) { TextButton(onClick = { showEditDialog = true }) { Text("✏️", fontSize = 18.sp) } }
+            if (canDelete && isOnline) { TextButton(onClick = { showDeleteDialog = true }) { Text("🗑", fontSize = 18.sp, color = ErrorRed) } }
         }
         HorizontalDivider(color = BorderGray)
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            // ── Workflow contact ──────────────────────────────────────────────
-            Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = CardBg),
-                elevation = CardDefaults.cardElevation(2.dp)) {
+        // Bannière hors ligne
+        if (!isOnline) {
+            Surface(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                shape = RoundedCornerShape(10.dp), color = Color(0xFFFFF3E0)) {
+                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("📡", fontSize = 14.sp); Spacer(Modifier.width(8.dp))
+                    Text("Mode hors ligne — consultation uniquement, détails partiels",
+                        fontSize = 12.sp, color = Color(0xFFE65100))
+                }
+            }
+        }
+
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)) {
+
+            // Workflow contact
+            Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = CardBg), elevation = CardDefaults.cardElevation(2.dp)) {
                 Column(Modifier.padding(16.dp)) {
                     Text("Workflow de contact", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextDark)
                     Spacer(Modifier.height(10.dp))
-
-                    // Stepper visuel
                     ContactWorkflowStepper(currentEtat = detail.etat_contact)
-
                     Spacer(Modifier.height(12.dp))
-
-                    // Boutons de changement de workflow
-                    if (canEdit) {
+                    if (canEdit && isOnline) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Box {
-                                OutlinedButton(
-                                    onClick = { showContactDropdown = true },
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
+                                OutlinedButton(onClick = { showContactDropdown = true }, shape = RoundedCornerShape(8.dp)) {
                                     Surface(shape = RoundedCornerShape(6.dp), color = contactBg) {
-                                        Text(etatContactLabel(detail.etat_contact), fontSize = 11.sp,
-                                            color = contactFg, fontWeight = FontWeight.SemiBold,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                                        Text(etatContactLabel(detail.etat_contact), fontSize = 11.sp, color = contactFg,
+                                            fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                                     }
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("▾", fontSize = 12.sp, color = TextGray)
+                                    Spacer(Modifier.width(4.dp)); Text("▾", fontSize = 12.sp, color = TextGray)
                                 }
-                                DropdownMenu(expanded = showContactDropdown,
-                                    onDismissRequest = { showContactDropdown = false }) {
+                                DropdownMenu(expanded = showContactDropdown, onDismissRequest = { showContactDropdown = false }) {
                                     ETATS_CONTACT.forEach { etat ->
                                         DropdownMenuItem(
                                             text = {
@@ -506,29 +455,18 @@ private fun ReservationDetailScreen(
                                     }
                                 }
                             }
-
-                            OutlinedButton(
-                                onClick = { showAddRelanceDialog = true },
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
+                            OutlinedButton(onClick = { showAddRelanceDialog = true }, shape = RoundedCornerShape(8.dp)) {
                                 Text("+ Relance", fontSize = 12.sp, color = AccentBlue)
                             }
                         }
                     }
-
-                    // Historique des relances
                     if (detail.contacts.isNotEmpty()) {
                         Spacer(Modifier.height(10.dp))
-                        Text("Historique des contacts (${detail.contacts.size})", fontSize = 12.sp,
-                            color = TextGray, fontWeight = FontWeight.Medium)
+                        Text("Historique des contacts (${detail.contacts.size})", fontSize = 12.sp, color = TextGray, fontWeight = FontWeight.Medium)
                         Spacer(Modifier.height(6.dp))
                         detail.contacts.forEach { c ->
-                            Row(
-                                Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("📞", fontSize = 14.sp)
-                                Spacer(Modifier.width(8.dp))
+                            Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("📞", fontSize = 14.sp); Spacer(Modifier.width(8.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(c.date_contact?.take(10) ?: "—", fontSize = 12.sp, color = TextDark)
                                     c.type_contact?.let { Text(it, fontSize = 11.sp, color = TextGray) }
@@ -540,28 +478,23 @@ private fun ReservationDetailScreen(
                 }
             }
 
-            // ── Présence ──────────────────────────────────────────────────────
-            Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = CardBg),
-                elevation = CardDefaults.cardElevation(2.dp)) {
+            // Présence
+            Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = CardBg), elevation = CardDefaults.cardElevation(2.dp)) {
                 Column(Modifier.padding(16.dp)) {
                     Text("Présence", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextDark)
                     Spacer(Modifier.height(10.dp))
-                    if (canEdit) {
+                    if (canEdit && isOnline) {
                         Box {
-                            OutlinedButton(onClick = { showPresenceDropdown = true },
-                                shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedButton(onClick = { showPresenceDropdown = true }, shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                     Surface(shape = RoundedCornerShape(6.dp), color = presenceBg) {
-                                        Text(etatPresenceLabel(detail.etat_presence), fontSize = 11.sp,
-                                            color = presenceFg, fontWeight = FontWeight.SemiBold,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                                        Text(etatPresenceLabel(detail.etat_presence), fontSize = 11.sp, color = presenceFg,
+                                            fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                                     }
                                     Text("▾", fontSize = 12.sp, color = TextGray)
                                 }
                             }
-                            DropdownMenu(expanded = showPresenceDropdown,
-                                onDismissRequest = { showPresenceDropdown = false }) {
+                            DropdownMenu(expanded = showPresenceDropdown, onDismissRequest = { showPresenceDropdown = false }) {
                                 ETATS_PRESENCE.forEach { etat ->
                                     DropdownMenuItem(
                                         text = {
@@ -579,9 +512,8 @@ private fun ReservationDetailScreen(
                         }
                     } else {
                         Surface(shape = RoundedCornerShape(10.dp), color = presenceBg) {
-                            Text(etatPresenceLabel(detail.etat_presence), fontSize = 12.sp,
-                                color = presenceFg, fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
+                            Text(etatPresenceLabel(detail.etat_presence), fontSize = 12.sp, color = presenceFg,
+                                fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
                         }
                     }
                     Spacer(Modifier.height(6.dp))
@@ -592,12 +524,10 @@ private fun ReservationDetailScreen(
                 }
             }
 
-            // ── Zones réservées ───────────────────────────────────────────────
-            Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = CardBg),
-                elevation = CardDefaults.cardElevation(2.dp)) {
+            // Zones réservées
+            Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = CardBg), elevation = CardDefaults.cardElevation(2.dp)) {
                 Column(Modifier.padding(16.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text("Zones tarifaires réservées", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextDark)
                         Text("${detail.nb_tables_reservees} table(s)", fontSize = 12.sp, color = AccentBlue, fontWeight = FontWeight.SemiBold)
                     }
@@ -616,10 +546,9 @@ private fun ReservationDetailScreen(
                 }
             }
 
-            // ── Facturation ───────────────────────────────────────────────────
+            // Facturation
             if (detail.montant_brut > 0 || detail.remise_tables > 0 || detail.remise_montant > 0) {
-                Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = CardBg),
-                    elevation = CardDefaults.cardElevation(2.dp)) {
+                Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = CardBg), elevation = CardDefaults.cardElevation(2.dp)) {
                     Column(Modifier.padding(16.dp)) {
                         Text("Facturation", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextDark)
                         Spacer(Modifier.height(10.dp))
@@ -627,19 +556,16 @@ private fun ReservationDetailScreen(
                         if (detail.nb_prises_electriques > 0)
                             FactureRow("Prises (${detail.nb_prises_electriques})", "%.2f €".format(detail.montant_prises))
                         FactureRow("Montant brut", "%.2f €".format(detail.montant_brut), bold = true)
-                        if (detail.remise_tables > 0)
-                            FactureRow("Remise tables", "-${detail.remise_tables} table(s)", color = SuccessGreen)
-                        if (detail.remise_montant > 0)
-                            FactureRow("Remise montant", "-%.2f €".format(detail.remise_montant), color = SuccessGreen)
+                        if (detail.remise_tables > 0) FactureRow("Remise tables", "-${detail.remise_tables} table(s)", color = SuccessGreen)
+                        if (detail.remise_montant > 0) FactureRow("Remise montant", "-%.2f €".format(detail.remise_montant), color = SuccessGreen)
                     }
                 }
             }
 
-            // ── Notes ─────────────────────────────────────────────────────────
+            // Notes
             detail.notes?.let { notes ->
                 if (notes.isNotBlank()) {
-                    Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = CardBg),
-                        elevation = CardDefaults.cardElevation(2.dp)) {
+                    Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = CardBg), elevation = CardDefaults.cardElevation(2.dp)) {
                         Column(Modifier.padding(16.dp)) {
                             Text("Notes", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextDark)
                             Spacer(Modifier.height(8.dp))
@@ -649,10 +575,9 @@ private fun ReservationDetailScreen(
                 }
             }
 
-            // ── Jeux ─────────────────────────────────────────────────────────
+            // Jeux
             if (detail.nb_jeux > 0) {
-                Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = CardBg),
-                    elevation = CardDefaults.cardElevation(2.dp)) {
+                Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = CardBg), elevation = CardDefaults.cardElevation(2.dp)) {
                     Column(Modifier.padding(16.dp)) {
                         Text("Jeux (${detail.nb_jeux})", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextDark)
                         Spacer(Modifier.height(8.dp))
@@ -666,37 +591,31 @@ private fun ReservationDetailScreen(
         }
     }
 
-    // Dialogs
-    if (showEditDialog) {
+    if (showEditDialog && isOnline) {
         EditReservationDialog(
-            detail = detail,
-            zonesTarifaires = zonesTarifaires,
-            isLoading = isSubmitting,
+            detail = detail, zonesTarifaires = zonesTarifaires, isLoading = isSubmitting,
             onDismiss = { showEditDialog = false },
             onConfirm = { nbPrises, remiseT, remiseM, notes, animer, zones ->
-                onUpdate(nbPrises, remiseT, remiseM, notes, animer, zones)
-                showEditDialog = false
+                onUpdate(nbPrises, remiseT, remiseM, notes, animer, zones); showEditDialog = false
             }
         )
     }
 
-    if (showDeleteDialog) {
+    if (showDeleteDialog && isOnline) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
             title = { Text("Supprimer cette réservation ?", fontWeight = FontWeight.Bold) },
-            text  = {
+            text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Vous allez supprimer la réservation de « ${detail.reservant_nom} ».")
-                    Card(shape = RoundedCornerShape(8.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE))) {
+                    Card(shape = RoundedCornerShape(8.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE))) {
                         Text("⚠ Impossible si des jeux sont placés ou si une facture est payée.",
                             fontSize = 12.sp, color = ErrorRed, modifier = Modifier.padding(10.dp))
                     }
                 }
             },
             confirmButton = {
-                Button(onClick = { onDelete(); showDeleteDialog = false },
-                    colors = ButtonDefaults.buttonColors(containerColor = ErrorRed)) {
+                Button(onClick = { onDelete(); showDeleteDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = ErrorRed)) {
                     Text("Supprimer", color = Color.White)
                 }
             },
@@ -704,53 +623,30 @@ private fun ReservationDetailScreen(
         )
     }
 
-    if (showAddRelanceDialog) {
+    if (showAddRelanceDialog && isOnline) {
         AddRelanceDialog(
             isLoading = isSubmitting,
             onDismiss = { showAddRelanceDialog = false },
-            onConfirm = { date, type, notes ->
-                onAddContactRelance(date, type, notes)
-                showAddRelanceDialog = false
-            }
+            onConfirm = { date, type, notes -> onAddContactRelance(date, type, notes); showAddRelanceDialog = false }
         )
     }
 }
 
-// ── Stepper visuel workflow contact ───────────────────────────────────────────
 @Composable
 private fun ContactWorkflowStepper(currentEtat: String) {
     val steps = ETATS_CONTACT
     val currentIdx = steps.indexOf(currentEtat).coerceAtLeast(0)
-
-    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-        verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
         steps.forEachIndexed { i, etat ->
             val (bg, fg) = etatContactColor(etat)
             val isActive = i <= currentIdx
             val isCurrent = i == currentIdx
-
-            if (i > 0) {
-                Box(Modifier.width(8.dp).height(2.dp)
-                    .background(if (isActive) AccentBlue.copy(alpha = 0.4f) else DividerCol))
-            }
-
-            Surface(
-                shape = RoundedCornerShape(6.dp),
-                color = if (isCurrent) bg else if (isActive) bg.copy(alpha = 0.6f) else Color(0xFFF5F5F5)
-            ) {
-                Text(
-                    text = when(etat) {
-                        "contacte" -> "📞"
-                        "en_discussion" -> "💬"
-                        "reserve" -> "✅"
-                        "liste_jeux_demandee" -> "📋"
-                        "liste_jeux_obtenue" -> "📄"
-                        "jeux_recus" -> "🎮"
-                        else -> "•"
-                    },
-                    fontSize = if (isCurrent) 16.sp else 12.sp,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
-                )
+            if (i > 0) Box(Modifier.width(8.dp).height(2.dp).background(if (isActive) AccentBlue.copy(alpha = 0.4f) else DividerCol))
+            Surface(shape = RoundedCornerShape(6.dp), color = if (isCurrent) bg else if (isActive) bg.copy(alpha = 0.6f) else Color(0xFFF5F5F5)) {
+                Text(text = when(etat) {
+                    "contacte" -> "📞"; "en_discussion" -> "💬"; "reserve" -> "✅"
+                    "liste_jeux_demandee" -> "📋"; "liste_jeux_obtenue" -> "📄"; "jeux_recus" -> "🎮"; else -> "•"
+                }, fontSize = if (isCurrent) 16.sp else 12.sp, modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp))
             }
         }
     }
@@ -758,7 +654,6 @@ private fun ContactWorkflowStepper(currentEtat: String) {
     Text(etatContactLabel(currentEtat), fontSize = 12.sp, color = AccentBlue, fontWeight = FontWeight.SemiBold)
 }
 
-// ── Ligne facture ─────────────────────────────────────────────────────────────
 @Composable
 private fun FactureRow(label: String, value: String, bold: Boolean = false, color: Color = TextDark) {
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -767,13 +662,10 @@ private fun FactureRow(label: String, value: String, bold: Boolean = false, colo
     }
 }
 
-// ── Dialog création réservation ───────────────────────────────────────────────
 @Composable
 private fun CreateReservationDialog(
-    reservants: List<ReservantDto>,
-    zonesTarifaires: List<ZoneTarifaireDto>,
-    isLoading: Boolean,
-    onDismiss: () -> Unit,
+    reservants: List<ReservantDto>, zonesTarifaires: List<ZoneTarifaireDto>,
+    isLoading: Boolean, onDismiss: () -> Unit,
     onConfirm: (Int, Int, String?, Boolean, List<ZoneReserveeRequest>) -> Unit
 ) {
     var selectedReservantId by remember { mutableStateOf<Int?>(null) }
@@ -781,109 +673,54 @@ private fun CreateReservationDialog(
     var nbPrises            by remember { mutableStateOf("0") }
     var notes               by remember { mutableStateOf("") }
     var viendrAnimer        by remember { mutableStateOf(true) }
-
-    // Zones : nb tables par zone
     val zonesMap = remember { mutableStateMapOf<Int, String>() }
-
     val canConfirm = selectedReservantId != null && !isLoading
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Nouvelle réservation", fontWeight = FontWeight.Bold) },
         text = {
-            Column(
-                Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // Sélection réservant
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Réservant *", fontSize = 13.sp, color = TextGray, fontWeight = FontWeight.Medium)
                 Box {
-                    OutlinedButton(
-                        onClick = { showReservantMenu = true },
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                reservants.find { it.id == selectedReservantId }?.nom ?: "Choisir un réservant",
-                                fontSize = 13.sp, color = if (selectedReservantId != null) TextDark else TextGray
-                            )
+                    OutlinedButton(onClick = { showReservantMenu = true }, shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text(reservants.find { it.id == selectedReservantId }?.nom ?: "Choisir un réservant",
+                                fontSize = 13.sp, color = if (selectedReservantId != null) TextDark else TextGray)
                             Text("▾", fontSize = 12.sp, color = TextGray)
                         }
                     }
-                    DropdownMenu(expanded = showReservantMenu,
-                        onDismissRequest = { showReservantMenu = false }) {
+                    DropdownMenu(expanded = showReservantMenu, onDismissRequest = { showReservantMenu = false }) {
                         reservants.forEach { r ->
                             DropdownMenuItem(
-                                text = {
-                                    Column {
-                                        Text(r.nom, fontSize = 13.sp,
-                                            fontWeight = if (r.id == selectedReservantId) FontWeight.Bold else FontWeight.Normal)
-                                        Text(r.type_reservant, fontSize = 11.sp, color = TextGray)
-                                    }
-                                },
+                                text = { Column { Text(r.nom, fontSize = 13.sp, fontWeight = if (r.id == selectedReservantId) FontWeight.Bold else FontWeight.Normal); Text(r.type_reservant, fontSize = 11.sp, color = TextGray) } },
                                 onClick = { selectedReservantId = r.id; showReservantMenu = false }
                             )
                         }
                     }
                 }
-
                 HorizontalDivider(color = BorderGray)
-
-                // Zones tarifaires
                 if (zonesTarifaires.isNotEmpty()) {
                     Text("Tables par zone tarifaire", fontSize = 13.sp, color = TextGray, fontWeight = FontWeight.Medium)
                     zonesTarifaires.forEach { zone ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text(zone.nom, fontSize = 13.sp, color = TextDark)
-                                Text("${zone.tables_disponibles} dispo · %.2f €/table".format(zone.prix_table),
-                                    fontSize = 11.sp, color = TextGray)
+                                Text("${zone.tables_disponibles} dispo · %.2f €/table".format(zone.prix_table), fontSize = 11.sp, color = TextGray)
                             }
-                            OutlinedTextField(
-                                value = zonesMap[zone.id] ?: "",
-                                onValueChange = { zonesMap[zone.id] = it },
-                                label = { Text("Nb") },
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                modifier = Modifier.width(70.dp)
-                            )
+                            OutlinedTextField(value = zonesMap[zone.id] ?: "", onValueChange = { zonesMap[zone.id] = it },
+                                label = { Text("Nb") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.width(70.dp))
                         }
                     }
                 } else {
-                    Card(shape = RoundedCornerShape(8.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1))) {
-                        Text("⚠ Aucune zone tarifaire pour ce festival. Créez-en d'abord dans l'écran Zones.",
-                            fontSize = 12.sp, color = Color(0xFFE65100), modifier = Modifier.padding(10.dp))
+                    Card(shape = RoundedCornerShape(8.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1))) {
+                        Text("⚠ Aucune zone tarifaire. Créez-en d'abord.", fontSize = 12.sp, color = Color(0xFFE65100), modifier = Modifier.padding(10.dp))
                     }
                 }
-
                 HorizontalDivider(color = BorderGray)
-
-                // Prises électriques
-                OutlinedTextField(
-                    value = nbPrises, onValueChange = { nbPrises = it },
-                    label = { Text("Nb prises électriques") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                // Notes
-                OutlinedTextField(
-                    value = notes, onValueChange = { notes = it },
-                    label = { Text("Notes") },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2, maxLines = 3
-                )
-
-                // Viendra animer
-                Row(
-                    Modifier.fillMaxWidth().clickable { viendrAnimer = !viendrAnimer },
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                OutlinedTextField(value = nbPrises, onValueChange = { nbPrises = it }, label = { Text("Nb prises électriques") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 3)
+                Row(Modifier.fillMaxWidth().clickable { viendrAnimer = !viendrAnimer }, verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = viendrAnimer, onCheckedChange = { viendrAnimer = it })
                     Spacer(Modifier.width(8.dp))
                     Text("Le réservant viendra animer", fontSize = 13.sp, color = TextDark)
@@ -893,14 +730,11 @@ private fun CreateReservationDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    val zones = zonesMap.entries
-                        .filter { (_, v) -> v.toIntOrNull() != null && v.toInt() > 0 }
+                    val zones = zonesMap.entries.filter { (_, v) -> v.toIntOrNull() != null && v.toInt() > 0 }
                         .map { (id, v) -> ZoneReserveeRequest(id, v.toInt()) }
-                    onConfirm(selectedReservantId!!, nbPrises.toIntOrNull() ?: 0,
-                        notes.ifBlank { null }, viendrAnimer, zones)
+                    onConfirm(selectedReservantId!!, nbPrises.toIntOrNull() ?: 0, notes.ifBlank { null }, viendrAnimer, zones)
                 },
-                enabled = canConfirm,
-                colors  = ButtonDefaults.buttonColors(containerColor = TextDark)
+                enabled = canConfirm, colors = ButtonDefaults.buttonColors(containerColor = TextDark)
             ) {
                 if (isLoading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
                 else Text("Créer", color = Color.White)
@@ -910,13 +744,10 @@ private fun CreateReservationDialog(
     )
 }
 
-// ── Dialog modification réservation ──────────────────────────────────────────
 @Composable
 private fun EditReservationDialog(
-    detail: ReservationDetailDto,
-    zonesTarifaires: List<ZoneTarifaireDto>,
-    isLoading: Boolean,
-    onDismiss: () -> Unit,
+    detail: ReservationDetailDto, zonesTarifaires: List<ZoneTarifaireDto>,
+    isLoading: Boolean, onDismiss: () -> Unit,
     onConfirm: (Int, Int, Double, String?, Boolean, List<ZoneReserveeRequest>) -> Unit
 ) {
     var nbPrises      by remember { mutableStateOf(detail.nb_prises_electriques.toString()) }
@@ -924,7 +755,6 @@ private fun EditReservationDialog(
     var remiseMontant by remember { mutableStateOf(detail.remise_montant.toString()) }
     var notes         by remember { mutableStateOf(detail.notes ?: "") }
     var viendrAnimer  by remember { mutableStateOf(detail.viendra_animer) }
-
     val zonesMap = remember {
         mutableStateMapOf<Int, String>().also { map ->
             detail.zones_reservees.forEach { z -> map[z.zone_tarifaire_id] = z.nombre_tables.toString() }
@@ -935,82 +765,42 @@ private fun EditReservationDialog(
         onDismissRequest = onDismiss,
         title = { Text("Modifier la réservation", fontWeight = FontWeight.Bold) },
         text = {
-            Column(
-                Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Text("${detail.reservant_nom}", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = AccentBlue)
-
-                // Zones tarifaires
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(detail.reservant_nom, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = AccentBlue)
                 if (zonesTarifaires.isNotEmpty()) {
                     Text("Tables par zone tarifaire", fontSize = 13.sp, color = TextGray, fontWeight = FontWeight.Medium)
                     zonesTarifaires.forEach { zone ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text(zone.nom, fontSize = 13.sp, color = TextDark)
                                 Text("%.2f €/table".format(zone.prix_table), fontSize = 11.sp, color = TextGray)
                             }
-                            OutlinedTextField(
-                                value = zonesMap[zone.id] ?: "",
-                                onValueChange = { zonesMap[zone.id] = it },
-                                label = { Text("Nb") },
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                modifier = Modifier.width(70.dp)
-                            )
+                            OutlinedTextField(value = zonesMap[zone.id] ?: "", onValueChange = { zonesMap[zone.id] = it },
+                                label = { Text("Nb") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.width(70.dp))
                         }
                     }
                     HorizontalDivider(color = BorderGray)
                 }
-
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = nbPrises, onValueChange = { nbPrises = it },
-                        label = { Text("Prises élec.") }, singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = remiseTables, onValueChange = { remiseTables = it },
-                        label = { Text("Remise tables") }, singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f)
-                    )
+                    OutlinedTextField(value = nbPrises, onValueChange = { nbPrises = it }, label = { Text("Prises élec.") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                    OutlinedTextField(value = remiseTables, onValueChange = { remiseTables = it }, label = { Text("Remise tables") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
                 }
-                OutlinedTextField(
-                    value = remiseMontant, onValueChange = { remiseMontant = it },
-                    label = { Text("Remise montant (€)") }, singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = notes, onValueChange = { notes = it },
-                    label = { Text("Notes") },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2, maxLines = 3
-                )
-                Row(
-                    Modifier.fillMaxWidth().clickable { viendrAnimer = !viendrAnimer },
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                OutlinedTextField(value = remiseMontant, onValueChange = { remiseMontant = it }, label = { Text("Remise montant (€)") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 3)
+                Row(Modifier.fillMaxWidth().clickable { viendrAnimer = !viendrAnimer }, verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = viendrAnimer, onCheckedChange = { viendrAnimer = it })
-                    Spacer(Modifier.width(8.dp))
-                    Text("Viendra animer", fontSize = 13.sp, color = TextDark)
+                    Spacer(Modifier.width(8.dp)); Text("Viendra animer", fontSize = 13.sp, color = TextDark)
                 }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    val zones = zonesMap.entries
-                        .filter { (_, v) -> v.toIntOrNull() != null && v.toInt() > 0 }
+                    val zones = zonesMap.entries.filter { (_, v) -> v.toIntOrNull() != null && v.toInt() > 0 }
                         .map { (id, v) -> ZoneReserveeRequest(id, v.toInt()) }
-                    onConfirm(nbPrises.toIntOrNull() ?: 0, remiseTables.toIntOrNull() ?: 0,
-                        remiseMontant.toDoubleOrNull() ?: 0.0, notes.ifBlank { null }, viendrAnimer, zones)
+                    onConfirm(nbPrises.toIntOrNull() ?: 0, remiseTables.toIntOrNull() ?: 0, remiseMontant.toDoubleOrNull() ?: 0.0, notes.ifBlank { null }, viendrAnimer, zones)
                 },
-                enabled = !isLoading,
-                colors  = ButtonDefaults.buttonColors(containerColor = TextDark)
+                enabled = !isLoading, colors = ButtonDefaults.buttonColors(containerColor = TextDark)
             ) {
                 if (isLoading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
                 else Text("Enregistrer", color = Color.White)
@@ -1020,46 +810,24 @@ private fun EditReservationDialog(
     )
 }
 
-// ── Dialog ajout relance ──────────────────────────────────────────────────────
 @Composable
-private fun AddRelanceDialog(
-    isLoading: Boolean,
-    onDismiss: () -> Unit,
-    onConfirm: (String?, String?, String?) -> Unit
-) {
+private fun AddRelanceDialog(isLoading: Boolean, onDismiss: () -> Unit, onConfirm: (String?, String?, String?) -> Unit) {
     var date  by remember { mutableStateOf("") }
     var type  by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
-
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Ajouter un contact / relance", fontWeight = FontWeight.Bold) },
-        text  = {
+        text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(
-                    value = date, onValueChange = { date = it },
-                    label = { Text("Date (YYYY-MM-DD)") },
-                    singleLine = true, modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = type, onValueChange = { type = it },
-                    label = { Text("Type (mail, téléphone…)") },
-                    singleLine = true, modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = notes, onValueChange = { notes = it },
-                    label = { Text("Notes") },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2, maxLines = 3
-                )
+                OutlinedTextField(value = date, onValueChange = { date = it }, label = { Text("Date (YYYY-MM-DD)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = type, onValueChange = { type = it }, label = { Text("Type (mail, téléphone…)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 3)
             }
         },
         confirmButton = {
-            Button(
-                onClick  = { onConfirm(date.ifBlank { null }, type.ifBlank { null }, notes.ifBlank { null }) },
-                enabled  = !isLoading,
-                colors   = ButtonDefaults.buttonColors(containerColor = TextDark)
-            ) {
+            Button(onClick = { onConfirm(date.ifBlank { null }, type.ifBlank { null }, notes.ifBlank { null }) },
+                enabled = !isLoading, colors = ButtonDefaults.buttonColors(containerColor = TextDark)) {
                 if (isLoading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
                 else Text("Ajouter", color = Color.White)
             }

@@ -1,5 +1,6 @@
 package com.example.dev_mobile.network
 
+import android.content.Context
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -20,26 +21,40 @@ object RetrofitClient {
 
     private const val BASE_URL = "https://162.38.111.34:4000/"
 
-    private val cookieJar = AuthCookieJar()
+    private var _cookieJar: AuthCookieJar? = null
 
-    private val sslContext = SSLContext.getInstance("TLS").apply {
-        init(null, trustAllCerts, SecureRandom())
+    /**
+     * Initialise le client avec le contexte de l'application.
+     * Appelé dans MainActivity pour permettre la sauvegarde des tokens.
+     */
+    fun init(context: Context) {
+        if (_cookieJar == null) {
+            _cookieJar = AuthCookieJar(context)
+        }
     }
 
-    private val okHttpClient = OkHttpClient.Builder()
-        .sslSocketFactory(sslContext.socketFactory, trustAllCerts[0] as X509TrustManager)
-        .hostnameVerifier { _, _ -> true }
-        .cookieJar(cookieJar)
-        .addInterceptor(HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
-        })
-        .build()
+    private val okHttpClient: OkHttpClient by lazy {
+        val sslContext = SSLContext.getInstance("TLS").apply {
+            init(null, trustAllCerts, SecureRandom())
+        }
+        
+        OkHttpClient.Builder()
+            .sslSocketFactory(sslContext.socketFactory, trustAllCerts[0] as X509TrustManager)
+            .hostnameVerifier { _, _ -> true }
+            .cookieJar(_cookieJar ?: throw IllegalStateException("RetrofitClient non initialisé. Appelez init(context) dans MainActivity."))
+            .addInterceptor(HttpLoggingInterceptor().apply {
+                level = HttpLoggingInterceptor.Level.BODY
+            })
+            .build()
+    }
 
-    val retrofit: Retrofit = Retrofit.Builder()
-        .baseUrl(BASE_URL)
-        .client(okHttpClient)
-        .addConverterFactory(GsonConverterFactory.create())
-        .build()
+    val retrofit: Retrofit by lazy {
+        Retrofit.Builder()
+            .baseUrl(BASE_URL)
+            .client(okHttpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+    }
 
-    fun getCookieJar(): AuthCookieJar = cookieJar
+    fun getCookieJar(): AuthCookieJar = _cookieJar ?: throw IllegalStateException("RetrofitClient non initialisé")
 }

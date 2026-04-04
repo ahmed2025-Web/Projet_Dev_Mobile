@@ -1,16 +1,19 @@
-
 package com.example.dev_mobile.ui.dashboard
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.dev_mobile.data.local.AppDatabase
 import com.example.dev_mobile.network.FestivalDashboardDto
 import com.example.dev_mobile.network.ReservationDto
 import com.example.dev_mobile.repository.ApiResult
 import com.example.dev_mobile.repository.FestivalRepository
 import com.example.dev_mobile.repository.ReservationRepository
+import com.example.dev_mobile.utils.NetworkConnectivityObserver
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class DashboardUiState(
@@ -18,12 +21,16 @@ data class DashboardUiState(
     val festival: FestivalDashboardDto? = null,
     val reservations: List<ReservationDto> = emptyList(),
     val errorMessage: String? = null,
-    val lastRefresh: Long = 0L
+    val lastRefresh: Long = 0L,
+    val isFromCache: Boolean = false
 )
 
-class DashboardViewModel : ViewModel() {
-    private val festivalRepo    = FestivalRepository()
-    private val reservationRepo = ReservationRepository()
+class DashboardViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val db              = AppDatabase.getInstance(application)
+    private val connectivity    = NetworkConnectivityObserver(application)
+    private val festivalRepo    = FestivalRepository(db, connectivity)
+    private val reservationRepo = ReservationRepository(db, connectivity)
 
     private val _uiState = MutableStateFlow(DashboardUiState())
     val uiState: StateFlow<DashboardUiState> = _uiState
@@ -32,40 +39,40 @@ class DashboardViewModel : ViewModel() {
 
     fun load() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
 
-            // Charger le festival courant en parallèle
-            val festivalDeferred = async { festivalRepo.getFestivalCourant() }
-            val festival = festivalDeferred.await()
+            val isOnline = connectivity.isCurrentlyConnected()
+            val festival = festivalRepo.getFestivalCourant()
 
             if (festival == null) {
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    errorMessage = "Aucun festival courant défini"
-                )
+                _uiState.update { it.copy(
+                    isLoading    = false,
+                    errorMessage = if (isOnline) "Aucun festival courant défini"
+                    else "Hors ligne — Aucune donnée en cache"
+                )}
                 return@launch
             }
 
-            // Charger les réservations du festival courant
             val reservations = when (val r = reservationRepo.getByFestival(festival.id)) {
                 is ApiResult.Success -> r.data
                 is ApiResult.Error   -> emptyList()
             }
 
-            _uiState.value = _uiState.value.copy(
+            _uiState.update { it.copy(
                 isLoading    = false,
                 festival     = festival,
                 reservations = reservations,
-                lastRefresh  = System.currentTimeMillis()
-            )
+                lastRefresh  = System.currentTimeMillis(),
+                isFromCache  = !isOnline
+            )}
         }
     }
 
-    // Statistiques calculées depuis les réservations
     fun getReservationStats(): Map<String, Int> {
         val list = _uiState.value.reservations
         return mapOf(
             "total"               to list.size,
+            "pas_contacte"        to list.count { it.etat_contact == "pas_contacte" },
             "contacte"            to list.count { it.etat_contact == "contacte" },
             "en_discussion"       to list.count { it.etat_contact == "en_discussion" },
             "reserve"             to list.count { it.etat_contact == "reserve" },
@@ -77,9 +84,6 @@ class DashboardViewModel : ViewModel() {
         )
     }
 
-    fun getTotalTablesReservees(): Int =
-        _uiState.value.reservations.sumOf { it.nb_tables_reservees }
-
-    fun getMontantTotal(): Double =
-        _uiState.value.reservations.sumOf { it.montant_brut }
+    fun getTotalTablesReservees(): Int = _uiState.value.reservations.sumOf { it.nb_tables_reservees }
+    fun getMontantTotal(): Double      = _uiState.value.reservations.sumOf { it.montant_brut }
 }

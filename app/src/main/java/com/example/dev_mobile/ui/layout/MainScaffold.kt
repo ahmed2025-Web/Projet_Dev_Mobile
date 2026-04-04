@@ -1,4 +1,3 @@
-
 package com.example.dev_mobile.ui.layout
 
 import androidx.compose.animation.*
@@ -17,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.dev_mobile.session.UserSession
+import com.example.dev_mobile.ui.common.OfflineBanner
 import com.example.dev_mobile.ui.navigation.AppDestination
 import com.example.dev_mobile.ui.navigation.MenuConfig
 
@@ -33,6 +33,7 @@ private val PageBg      = Color(0xFFF4F7FC)
 fun MainScaffold(
     currentDestination: AppDestination,
     festivalNom: String,
+    isOnline: Boolean,                          // ← nouveau paramètre
     onDestinationChange: (AppDestination) -> Unit,
     onLogout: () -> Unit,
     content: @Composable () -> Unit
@@ -41,12 +42,18 @@ fun MainScaffold(
 
     Box(modifier = Modifier.fillMaxSize().background(PageBg)) {
 
-        // Contenu principal
         Column(modifier = Modifier.fillMaxSize()) {
+
+            // ── Bannière offline (sticky en haut) ─────────────────────────────
+            OfflineBanner(isOnline = isOnline)
+
+            // ── Header de l'app ───────────────────────────────────────────────
             AppHeader(
-                festivalNom  = festivalNom,
-                onMenuClick  = { sidebarOpen = true }
+                festivalNom = festivalNom,
+                isOnline    = isOnline,
+                onMenuClick = { sidebarOpen = true }
             )
+
             Box(modifier = Modifier.fillMaxSize()) { content() }
         }
 
@@ -68,6 +75,7 @@ fun MainScaffold(
         ) {
             AppSidebar(
                 currentDestination  = currentDestination,
+                isOnline            = isOnline,
                 onDestinationChange = { onDestinationChange(it); sidebarOpen = false },
                 onLogout            = onLogout,
                 onClose             = { sidebarOpen = false }
@@ -79,6 +87,7 @@ fun MainScaffold(
 @Composable
 private fun AppHeader(
     festivalNom: String,
+    isOnline: Boolean,
     onMenuClick: () -> Unit
 ) {
     Column {
@@ -101,14 +110,45 @@ private fun AppHeader(
                 color      = TextDark,
                 modifier   = Modifier.weight(1f)
             )
+            // Indicateur connectivité compact
+            ConnectivityDot(isOnline = isOnline)
+            Spacer(Modifier.width(12.dp))
         }
         HorizontalDivider(color = Color(0xFFE8EDF5))
     }
 }
 
 @Composable
+private fun ConnectivityDot(isOnline: Boolean) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = if (isOnline) Color(0xFFE8F5E9) else Color(0xFFFFF3E0)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                Modifier
+                    .size(7.dp)
+                    .clip(CircleShape)
+                    .background(if (isOnline) Color(0xFF388E3C) else Color(0xFFE65100))
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                if (isOnline) "En ligne" else "Hors ligne",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (isOnline) Color(0xFF388E3C) else Color(0xFFE65100)
+            )
+        }
+    }
+}
+
+@Composable
 private fun AppSidebar(
     currentDestination: AppDestination,
+    isOnline: Boolean,
     onDestinationChange: (AppDestination) -> Unit,
     onLogout: () -> Unit,
     onClose: () -> Unit
@@ -137,6 +177,30 @@ private fun AppSidebar(
             }
         }
 
+        // Statut connectivité dans la sidebar
+        if (!isOnline) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                shape = RoundedCornerShape(10.dp),
+                color = Color(0xFFFFF3E0)
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("📡", fontSize = 14.sp)
+                    Spacer(Modifier.width(8.dp))
+                    Column {
+                        Text("Mode hors ligne", fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold, color = Color(0xFFE65100))
+                        Text("Consultation uniquement", fontSize = 10.sp, color = Color(0xFF8A8FA3))
+                    }
+                }
+            }
+        }
+
         HorizontalDivider(color = Color(0xFFEEF2F8))
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -151,11 +215,10 @@ private fun AppSidebar(
             }
         }
 
-        // Bas de la sidebar : Logout + Profil
+        // Bas : Logout + Profil
         Column {
             HorizontalDivider(color = Color(0xFFEEF2F8))
-            
-            // Bouton Déconnexion
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -175,7 +238,6 @@ private fun AppSidebar(
 
             HorizontalDivider(color = Color(0xFFF4F7FC))
 
-            // Profil
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

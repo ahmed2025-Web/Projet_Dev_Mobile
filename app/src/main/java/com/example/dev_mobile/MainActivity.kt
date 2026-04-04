@@ -7,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.dev_mobile.network.RetrofitClient
 import com.example.dev_mobile.ui.administration.AdministrationScreen
 import com.example.dev_mobile.ui.auth.AuthViewModel
 import com.example.dev_mobile.ui.auth.LoginScreen
@@ -28,6 +29,11 @@ enum class AuthScreen { LOGIN, REGISTER, PENDING, APP }
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // INITIALISATION RÉSEAU (OFFLINE FIRST)
+        // On initialise le client ici pour qu'il puisse charger les tokens sauvegardés sur le disque
+        RetrofitClient.init(this)
+        
         enableEdgeToEdge()
         setContent {
             DevMobileTheme {
@@ -39,9 +45,15 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun AppRoot() {
-    var authScreen by remember { mutableStateOf(AuthScreen.LOGIN) }
     val authViewModel: AuthViewModel = viewModel()
     val uiState by authViewModel.uiState.collectAsStateWithLifecycle()
+    
+    var authScreen by remember { mutableStateOf(AuthScreen.LOGIN) }
+
+    // Vérification de la session (Nom + Rôle) au lancement
+    LaunchedEffect(Unit) {
+        authViewModel.checkSession()
+    }
 
     LaunchedEffect(uiState.isSuccess, uiState.isPending) {
         when {
@@ -85,34 +97,32 @@ fun MainApp(onLogout: () -> Unit) {
     MainScaffold(
         currentDestination  = currentDestination,
         festivalNom         = mainState.festivalCourantNom,
+        isOnline            = mainState.isOnline,
         onDestinationChange = { currentDestination = it },
         onLogout            = onLogout
     ) {
         when (currentDestination) {
-
             AppDestination.Dashboard -> DashboardScreen(
-                festivalNom = mainState.festivalCourantNom,
+                festivalNom              = mainState.festivalCourantNom,
+                isOnline                 = mainState.isOnline,
                 onNavigateToReservations = { currentDestination = AppDestination.Reservations },
                 onNavigateToFestivals    = { currentDestination = AppDestination.Festivals },
                 onNavigateToReservants   = { currentDestination = AppDestination.Reservants }
             )
-
             AppDestination.Festivals -> FestivalScreen(
+                isOnline                 = mainState.isOnline,
                 onFestivalCourantChanged = { mainViewModel.loadFestivalCourant() }
             )
-
-            AppDestination.Reservants -> ReservantScreen()
-
-            AppDestination.Reservations -> ReservationScreen(
-                festivalId = mainState.festivalCourantId ?: -1
+            AppDestination.Reservants -> ReservantScreen(
+                isOnline                 = mainState.isOnline
             )
-
+            AppDestination.Reservations -> ReservationScreen(
+                festivalId               = mainState.festivalCourantId ?: -1,
+                isOnline                 = mainState.isOnline
+            )
             AppDestination.Administration -> AdministrationScreen()
-
             AppDestination.JeuxEditeurs   -> PlaceholderScreen("Jeux & Éditeurs", "🎮")
             AppDestination.Zones          -> PlaceholderScreen("Zones", "🗺️")
-            AppDestination.Facturation    -> PlaceholderScreen("Facturation", "💰")
-            AppDestination.Recapitulatif  -> PlaceholderScreen("Récapitulatif", "📊")
             AppDestination.VuesPubliques  -> PlaceholderScreen("Vues publiques", "👁️")
         }
     }
