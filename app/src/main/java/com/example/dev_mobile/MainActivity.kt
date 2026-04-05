@@ -20,6 +20,7 @@ import com.example.dev_mobile.ui.layout.MainScaffold
 import com.example.dev_mobile.ui.main.MainViewModel
 import com.example.dev_mobile.ui.navigation.AppDestination
 import com.example.dev_mobile.ui.navigation.MenuConfig
+import com.example.dev_mobile.ui.public.VuesPubliquesScreen
 import com.example.dev_mobile.ui.reservants.ReservantScreen
 import com.example.dev_mobile.ui.reservations.ReservationScreen
 import com.example.dev_mobile.ui.theme.DevMobileTheme
@@ -123,7 +124,11 @@ fun MainApp(onLogout: () -> Unit) {
             AppDestination.Administration -> AdministrationScreen()
             AppDestination.JeuxEditeurs   -> PlaceholderScreen("Jeux & Éditeurs", "🎮")
             AppDestination.Zones          -> PlaceholderScreen("Zones", "🗺️")
-            AppDestination.VuesPubliques  -> PlaceholderScreen("Vues publiques", "👁️")
+            AppDestination.VuesPubliques -> VuesPubliquesScreen(
+                festivalId  = mainState.festivalCourantId ?: -1,
+                festivalNom = mainState.festivalCourantNom,
+                isOnline    = mainState.isOnline
+            )
         }
     }
 }
