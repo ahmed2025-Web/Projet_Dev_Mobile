@@ -10,7 +10,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -135,25 +134,27 @@ fun VuesPubliquesScreen(
         }
 
         // ── Contenu selon l'onglet ────────────────────────────────────────────
-        when {
-            state.isLoading -> LoadingState()
-            !isOnline       -> OfflinePublicState()
-            else -> when (state.selectedTab) {
-                0 -> JeuxTab(
-                    jeux    = vm.getFilteredJeux(),
-                    total   = state.jeux.size,
-                    isEmpty = state.jeux.isEmpty()
-                )
-                1 -> EditeurTab(
-                    editeurs = vm.getFilteredEditeurs(),
-                    total    = state.editeurs.size,
-                    isEmpty  = state.editeurs.isEmpty()
-                )
-                2 -> PlanTab(
-                    zones   = state.zonesPlan,
-                    isEmpty = state.zonesPlan.isEmpty()
-                )
-                else -> {}
+        Box(modifier = Modifier.weight(1f)) {
+            when {
+                state.isLoading -> LoadingState()
+                !isOnline       -> OfflinePublicState()
+                else -> when (state.selectedTab) {
+                    0 -> JeuxTab(
+                        jeux    = vm.getFilteredJeux(),
+                        total   = state.jeux.size,
+                        isEmpty = state.jeux.isEmpty()
+                    )
+                    1 -> EditeurTab(
+                        editeurs = vm.getFilteredEditeurs(),
+                        total    = state.editeurs.size,
+                        isEmpty  = state.editeurs.isEmpty()
+                    )
+                    2 -> PlanTab(
+                        zones   = state.zonesPlan,
+                        isEmpty = state.zonesPlan.isEmpty()
+                    )
+                    else -> {}
+                }
             }
         }
     }
@@ -264,7 +265,7 @@ private fun SearchBar(query: String, onChange: (String) -> Unit, hint: String) {
                 autoCorrect = false
             ),
             shape         = RoundedCornerShape(12.dp),
-            colors        = OutlinedTextFieldDefaults.colors(
+            colors = OutlinedTextFieldDefaults.colors(
                 unfocusedBorderColor = Color.Transparent,
                 focusedBorderColor   = AccentPurple.copy(alpha = 0.5f),
                 unfocusedContainerColor = PageBg,
@@ -373,7 +374,7 @@ private fun JeuxTab(
                 modifier = Modifier.padding(bottom = 4.dp)
             )
         }
-        items(jeux, key = { "${it.jeu_id}_${it.zone_plan_id}" }) { jeu ->
+        items(jeux) { jeu ->
             JeuCard(jeu = jeu, index = jeux.indexOf(jeu))
         }
         item { Spacer(Modifier.height(16.dp)) }
@@ -394,7 +395,7 @@ private fun JeuCard(jeu: JeuPublicDto, index: Int) {
             modifier = Modifier.padding(14.dp),
             verticalAlignment = Alignment.Top
         ) {
-            // Avatar avec première lettre du jeu
+
             Box(
                 modifier            = Modifier
                     .size(48.dp)
@@ -572,7 +573,7 @@ private fun EditeurTab(
                 modifier = Modifier.padding(bottom = 4.dp)
             )
         }
-        items(editeurs, key = { it.editeurId }) { editeur ->
+        items(editeurs) { editeur ->
             EditeurCard(editeur = editeur, index = editeurs.indexOf(editeur))
         }
         item { Spacer(Modifier.height(16.dp)) }
@@ -604,7 +605,7 @@ private fun EditeurCard(editeur: EditeurAvecJeux, index: Int) {
                         .background(avatarBg),
                     contentAlignment = Alignment.Center
                 ) {
-                    // Icône "bâtiment" pour les éditeurs
+
                     Text("🏢", fontSize = 20.sp)
                 }
 
@@ -739,7 +740,7 @@ private fun PlanTab(
                 modifier = Modifier.padding(bottom = 4.dp)
             )
         }
-        items(zones, key = { it.id }) { zone ->
+        items(zones) { zone ->
             ZoneCard(zone = zone)
         }
         item { Spacer(Modifier.height(16.dp)) }
@@ -794,48 +795,6 @@ private fun ZoneCard(zone: ZonePlanPublicDto) {
                         fontSize = 12.sp,
                         color    = TextGray
                     )
-                }
-
-                // Barre de remplissage (tables utilisées vs total)
-                val tablesUtilisees = zone.tables_utilisees ?: 0
-                val total           = zone.nombre_tables_total
-                if (total > 0) {
-                    Spacer(Modifier.height(8.dp))
-                    val ratio = (tablesUtilisees.toFloat() / total).coerceIn(0f, 1f)
-                    Column {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                "Tables utilisées",
-                                fontSize = 10.sp,
-                                color    = TextGray
-                            )
-                            Text(
-                                "$tablesUtilisees / $total",
-                                fontSize   = 10.sp,
-                                color      = AccentPurple,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                        Spacer(Modifier.height(3.dp))
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .height(6.dp)
-                                .clip(RoundedCornerShape(3.dp))
-                                .background(AccentPurple.copy(alpha = 0.12f))
-                        ) {
-                            Box(
-                                Modifier
-                                    .fillMaxHeight()
-                                    .fillMaxWidth(ratio)
-                                    .clip(RoundedCornerShape(3.dp))
-                                    .background(AccentPurple)
-                            )
-                        }
-                    }
                 }
             }
 

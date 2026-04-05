@@ -16,6 +16,7 @@ import com.example.dev_mobile.ui.auth.RegisterScreen
 import com.example.dev_mobile.ui.common.PlaceholderScreen
 import com.example.dev_mobile.ui.dashboard.DashboardScreen
 import com.example.dev_mobile.ui.festivals.FestivalScreen
+import com.example.dev_mobile.ui.jeuxediteurs.JeuxEditeursScreen
 import com.example.dev_mobile.ui.layout.MainScaffold
 import com.example.dev_mobile.ui.main.MainViewModel
 import com.example.dev_mobile.ui.navigation.AppDestination
@@ -30,11 +31,11 @@ enum class AuthScreen { LOGIN, REGISTER, PENDING, APP }
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
         // INITIALISATION RÉSEAU (OFFLINE FIRST)
         // On initialise le client ici pour qu'il puisse charger les tokens sauvegardés sur le disque
         RetrofitClient.init(this)
-        
+
         enableEdgeToEdge()
         setContent {
             DevMobileTheme {
@@ -48,7 +49,7 @@ class MainActivity : ComponentActivity() {
 fun AppRoot() {
     val authViewModel: AuthViewModel = viewModel()
     val uiState by authViewModel.uiState.collectAsStateWithLifecycle()
-    
+
     var authScreen by remember { mutableStateOf(AuthScreen.LOGIN) }
 
     // Vérification de la session (Nom + Rôle) au lancement
@@ -121,8 +122,10 @@ fun MainApp(onLogout: () -> Unit) {
                 festivalId               = mainState.festivalCourantId ?: -1,
                 isOnline                 = mainState.isOnline
             )
+
             AppDestination.Administration -> AdministrationScreen()
-            AppDestination.JeuxEditeurs   -> PlaceholderScreen("Jeux & Éditeurs", "🎮")
+
+            AppDestination.JeuxEditeurs   -> JeuxEditeursScreen()
             AppDestination.Zones          -> PlaceholderScreen("Zones", "🗺️")
             AppDestination.VuesPubliques -> VuesPubliquesScreen(
                 festivalId  = mainState.festivalCourantId ?: -1,
