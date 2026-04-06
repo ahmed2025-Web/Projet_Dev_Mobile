@@ -8,7 +8,8 @@ import retrofit2.http.*
 data class FestivalCourantDto(
     val id: Int,
     val nom: String,
-    val est_courant: Boolean = true,
+    val est_actif: Boolean = true,
+    val est_courant: Boolean = false,
     val date_debut: String? = null,
     val date_fin: String? = null
 )

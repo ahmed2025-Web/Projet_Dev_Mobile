@@ -19,7 +19,7 @@ private val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
 
 object RetrofitClient {
 
-    private const val BASE_URL = "https://162.38.111.34:4000/"
+    private const val BASE_URL = "https://projet-awi-hj8f.onrender.com"
 
     private var _cookieJar: AuthCookieJar? = null
 
