@@ -1,8 +1,6 @@
 package com.example.dev_mobile.ui.zones
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -13,9 +11,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -31,7 +27,7 @@ private val TextGray = Color(0xFF8A8FA3)
 private val PageBg = Color(0xFFF4F7FC)
 private val CardBg = Color(0xFFFFFFFF)
 private val DividerCol = Color(0xFFF0F3F8)
-private val GoldColor = Color(0xFFF59E0B)
+private val ErrorRed = Color(0xFFD32F2F)
 
 @Composable
 fun ZonesScreen(vm: ZoneViewModel = viewModel()) {
@@ -39,53 +35,43 @@ fun ZonesScreen(vm: ZoneViewModel = viewModel()) {
 
     Scaffold(containerColor = PageBg) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            // En-tête (Inspiré de FestivalScreen)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(CardBg)
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            // Header
+            Row(modifier = Modifier.fillMaxWidth().background(CardBg).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Zones du Plan", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextDark)
-                    Text("Placement des jeux et gestion tarifaire", fontSize = 12.sp, color = TextGray)
+                    Text("Zones du Plan & Placement", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextDark)
+                    Text("Gestion matériel & Placement par zone", fontSize = 12.sp, color = TextGray)
                 }
-                Button(
-                    onClick = { vm.openCreateZoneDialog() },
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
-                ) { Text("+ Nouvelle Zone", fontSize = 13.sp, color = Color.White) }
+                Button(onClick = { vm.openCreateZoneDialog() }, colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)) { Text("+ Nouvelle Zone") }
             }
             HorizontalDivider(color = DividerCol)
 
-            LazyColumn(
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // KPIs
+            LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 item {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         StatCard("Zones", "${state.totalZones}", Modifier.weight(1f))
-                        StatCard("Tables (espace)", "${state.tablesUtilisees}/${state.tablesTotal}", Modifier.weight(1.5f))
-                        StatCard("Jeux", "${state.jeuxPlaces}", Modifier.weight(1f))
+                        val isOver = state.tauxOccupation > 100
+                        StatCard("Occupation", "${state.tauxOccupation}%", Modifier.weight(1.5f), textColor = if(isOver) ErrorRed else AccentBlue)
+                        StatCard("Libres", "${state.tablesLibres}", Modifier.weight(1f))
                     }
                 }
 
-                // Stocks
+                if (state.jeuxEnAttente.isNotEmpty()) {
+                    item {
+                        Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFBEB)), modifier = Modifier.fillMaxWidth()) {
+                            Text("Jeux en attente de placement : ${state.jeuxEnAttente.size}", Modifier.padding(16.dp), color = Color(0xFFB45309), fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
                 item {
-                    Text("Stocks matériel", fontWeight = FontWeight.Bold, color = TextDark)
-                    Spacer(Modifier.height(8.dp))
+                    Text("Stocks matériel (Physique)", fontWeight = FontWeight.Bold, color = TextDark)
                     state.stocks?.let { StocksSection(it) }
                 }
 
-                // Zones (Inspiré de FestivalCard)
                 item {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
                         Text("Zones du plan", fontWeight = FontWeight.Bold, color = TextDark)
-                        IconButton(onClick = { vm.toggleViewMode() }) {
-                            Icon(if (state.isGridView) Icons.Default.List else Icons.Default.Menu, null)
-                        }
+                        IconButton(onClick = { vm.toggleViewMode() }) { Icon(if (state.isGridView) Icons.Default.List else Icons.Default.Menu, null) }
                     }
                 }
 
@@ -93,16 +79,13 @@ fun ZonesScreen(vm: ZoneViewModel = viewModel()) {
                     item {
                         state.zones.chunked(2).forEach { row ->
                             Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
-                                row.forEach { zone -> ZoneCard(zone, Modifier.weight(1f)) }
+                                row.forEach { zone -> ZoneCard(zone, state.userRole, { vm.openPlaceJeuDialog(zone.id) }, Modifier.weight(1f)) }
                                 if (row.size == 1) Spacer(Modifier.weight(1f))
                             }
-                            Spacer(Modifier.height(16.dp))
                         }
                     }
                 } else {
-                    items(state.zones) { zone ->
-                        ZoneCard(zone, Modifier.fillMaxWidth())
-                    }
+                    items(state.zones) { zone -> ZoneCard(zone, state.userRole, { vm.openPlaceJeuDialog(zone.id) }, Modifier.fillMaxWidth()) }
                 }
             }
         }
@@ -110,10 +93,10 @@ fun ZonesScreen(vm: ZoneViewModel = viewModel()) {
 }
 
 @Composable
-fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
+fun StatCard(label: String, value: String, modifier: Modifier = Modifier, textColor: Color = AccentBlue) {
     Surface(modifier = modifier, shape = RoundedCornerShape(12.dp), color = CardBg, tonalElevation = 2.dp) {
         Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(value, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = AccentBlue)
+            Text(value, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = textColor)
             Text(label, fontSize = 11.sp, color = TextGray)
         }
     }
@@ -121,38 +104,45 @@ fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
 
 @Composable
 fun StocksSection(stocks: StocksMaterielUi) {
-    Surface(shape = RoundedCornerShape(12.dp), color = CardBg, tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
+    Surface(shape = RoundedCornerShape(12.dp), color = CardBg, tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
         Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-            StockItem("Std", "${stocks.tablesStdUsed.toInt()}/${stocks.tablesStdTotal}")
-            StockItem("Gde", "${stocks.tablesGdesUsed.toInt()}/${stocks.tablesGdesTotal}")
-            StockItem("Mairie", "${stocks.tablesMairieUsed.toInt()}/${stocks.tablesMairieTotal}")
+            StockItem("Std", stocks.tablesStdUsed.toInt(), stocks.tablesStdTotal)
+            StockItem("Gde", stocks.tablesGdesUsed.toInt(), stocks.tablesGdesTotal)
+            StockItem("Mairie", stocks.tablesMairieUsed.toInt(), stocks.tablesMairieTotal)
         }
     }
 }
 
 @Composable
-fun StockItem(label: String, value: String) {
+fun StockItem(label: String, used: Int, total: Int) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, fontWeight = FontWeight.Bold)
+        Text("$used/$total", fontWeight = FontWeight.Bold, color = if (used > total) ErrorRed else TextDark)
         Text(label, fontSize = 10.sp, color = TextGray)
     }
 }
 
 @Composable
-fun ZoneCard(zone: ZonePlanUi, modifier: Modifier = Modifier) {
+fun ZoneCard(zone: ZonePlanUi, role: String, onPlacerJeu: () -> Unit, modifier: Modifier = Modifier) {
     Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = CardBg), modifier = modifier) {
         Column(Modifier.padding(16.dp)) {
-            Text(zone.nom, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-            Text("Tarif: ${zone.zoneTarifaireNom}", fontSize = 11.sp, color = TextGray)
-            
-            Spacer(Modifier.height(12.dp))
-            LinearProgressIndicator(progress = { zone.occupationPercent }, modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape))
-            
-            Spacer(Modifier.height(12.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Column {
+                    Text(zone.nom, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Text("Tarif: ${zone.zoneTarifaireNom}", fontSize = 11.sp, color = AccentBlue)
+                }
+                if (role != "visiteur") {
+                    Button(onClick = onPlacerJeu, contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.height(30.dp)) {
+                        Text("Placer", fontSize = 11.sp)
+                    }
+                }
+            }
+            LinearProgressIndicator(progress = { zone.occupationPercent }, modifier = Modifier.fillMaxWidth().height(8.dp).padding(vertical = 8.dp).clip(CircleShape))
             zone.jeux.forEach { jeu ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(jeu.nomJeu, fontSize = 12.sp)
-                    Text("${jeu.nbTables} table(s)", fontSize = 12.sp, color = TextGray)
+                    Surface(color = Color(0xFFEFF6FF), shape = RoundedCornerShape(4.dp)) {
+                        Text(jeu.typeTable, fontSize = 9.sp, modifier = Modifier.padding(4.dp))
+                    }
                 }
             }
         }

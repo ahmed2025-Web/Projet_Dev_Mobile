@@ -5,7 +5,7 @@ data class JeuPlaceUi(
     val nomJeu: String,
     val nomEditeur: String,
     val nbExemplaires: Int,
-    val nbTables: Int,
+    val nbTables: Double, // Support du 0.5 table
     val typeTable: String // "Std", "Gde", "Mairie"
 )
 
@@ -13,8 +13,8 @@ data class ZonePlanUi(
     val id: Int,
     val nom: String,
     val zoneTarifaireNom: String,
-    val nbTablesTotal: Int,
-    val nbTablesOccupees: Int,
+    val nbTablesTotal: Int, // Capacité physique max
+    val nbTablesOccupees: Double,
     val jeux: List<JeuPlaceUi> = emptyList()
 ) {
     val occupationPercent: Float
@@ -28,7 +28,7 @@ data class StocksMaterielUi(
     val tablesGdesTotal: Int,
     val tablesMairieUsed: Float,
     val tablesMairieTotal: Int,
-    val chaisesStdUsed: Int,
+    val chaisesStdUsed: Int, // Stock physique réel
     val chaisesStdTotal: Int,
     val chaisesMairieUsed: Int,
     val chaisesMairieTotal: Int
@@ -40,16 +40,19 @@ data class ZoneUiState(
     val zones: List<ZonePlanUi> = emptyList(),
     val stocks: StocksMaterielUi? = null,
     val totalZones: Int = 0,
-    val tablesUtilisees: Int = 0,
-    val tablesTotal: Int = 0,
+    val tablesUtiliseesEspace: Int = 0, // En unité "espace"
+    val tablesTotalEspace: Int = 0,
     val jeuxPlaces: Int = 0,
-    val tablesLibres: Int = 0,
-    // Dialog states
+    val jeuxEnAttente: List<JeuPlaceUi> = emptyList(),
+    val isGridView: Boolean = true,
+    val userRole: String = "organisateur",
     val showCreateZoneDialog: Boolean = false,
     val showPlaceJeuDialog: Boolean = false,
-    val selectedZoneId: Int? = null,
-    val isGridView: Boolean = true
+    val selectedZoneId: Int? = null
 ) {
     val tauxOccupation: Int
-        get() = if (tablesTotal > 0) (tablesUtilisees * 100 / tablesTotal) else 0
+        get() = if (tablesTotalEspace > 0) (tablesUtiliseesEspace * 100 / tablesTotalEspace) else 0
+    
+    val tablesLibres: Int
+        get() = (tablesTotalEspace - tablesUtiliseesEspace).coerceAtLeast(0)
 }

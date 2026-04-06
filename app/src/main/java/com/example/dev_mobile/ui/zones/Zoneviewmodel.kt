@@ -15,18 +15,17 @@ class ZoneViewModel : ViewModel() {
     }
 
     private fun loadMockData() {
-        // Mock data matching the Figma screenshot
         val mockZones = listOf(
             ZonePlanUi(
                 id = 1,
                 nom = "Zone Premium - Allée A",
                 zoneTarifaireNom = "Zone Premium",
                 nbTablesTotal = 20,
-                nbTablesOccupees = 15,
+                nbTablesOccupees = 15.0,
                 jeux = listOf(
-                    JeuPlaceUi(1, "Dobble", "Asmodee", 3, 1, "Std"),
-                    JeuPlaceUi(2, "Splendor", "Asmodee", 2, 1, "Std"),
-                    JeuPlaceUi(3, "Azul", "Plan B", 2, 1, "Std")
+                    JeuPlaceUi(1, "Dobble", "Asmodee", 3, 1.0, "Std"),
+                    JeuPlaceUi(2, "Splendor", "Asmodee", 2, 1.0, "Std"),
+                    JeuPlaceUi(3, "Azul", "Plan B", 2, 1.0, "Std")
                 )
             ),
             ZonePlanUi(
@@ -34,10 +33,10 @@ class ZoneViewModel : ViewModel() {
                 nom = "Zone Premium - Allée B",
                 zoneTarifaireNom = "Zone Premium",
                 nbTablesTotal = 20,
-                nbTablesOccupees = 18,
+                nbTablesOccupees = 18.0,
                 jeux = listOf(
-                    JeuPlaceUi(4, "Wingspan", "Matagot", 3, 2, "Gde"),
-                    JeuPlaceUi(5, "Terraforming Mars", "Intrafin", 2, 2, "Gde")
+                    JeuPlaceUi(4, "Wingspan", "Matagot", 3, 2.0, "Gde"),
+                    JeuPlaceUi(5, "Terraforming Mars", "Intrafin", 2, 2.0, "Gde")
                 )
             ),
             ZonePlanUi(
@@ -45,7 +44,7 @@ class ZoneViewModel : ViewModel() {
                 nom = "Zone Standard - Allée C",
                 zoneTarifaireNom = "Zone Standard",
                 nbTablesTotal = 30,
-                nbTablesOccupees = 22,
+                nbTablesOccupees = 22.0,
                 jeux = emptyList()
             ),
             ZonePlanUi(
@@ -53,7 +52,7 @@ class ZoneViewModel : ViewModel() {
                 nom = "Zone Standard - Allée D",
                 zoneTarifaireNom = "Zone Standard",
                 nbTablesTotal = 30,
-                nbTablesOccupees = 20,
+                nbTablesOccupees = 20.0,
                 jeux = emptyList()
             )
         )
@@ -71,10 +70,9 @@ class ZoneViewModel : ViewModel() {
                 zones = mockZones,
                 stocks = mockStocks,
                 totalZones = 5,
-                tablesUtilisees = 87,
-                tablesTotal = 115,
-                jeuxPlaces = 11,
-                tablesLibres = 28
+                tablesUtiliseesEspace = 87,
+                tablesTotalEspace = 115,
+                jeuxPlaces = 11
             )
         }
     }
@@ -89,5 +87,13 @@ class ZoneViewModel : ViewModel() {
 
     fun closeCreateZoneDialog() {
         _uiState.update { it.copy(showCreateZoneDialog = false) }
+    }
+
+    fun openPlaceJeuDialog(zoneId: Int) {
+        _uiState.update { it.copy(showPlaceJeuDialog = true, selectedZoneId = zoneId) }
+    }
+
+    fun closePlaceJeuDialog() {
+        _uiState.update { it.copy(showPlaceJeuDialog = false, selectedZoneId = null) }
     }
 }
