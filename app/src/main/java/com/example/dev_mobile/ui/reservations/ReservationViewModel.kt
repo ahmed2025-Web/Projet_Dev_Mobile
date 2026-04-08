@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.dev_mobile.data.local.AppDatabase
 import com.example.dev_mobile.network.*
 import com.example.dev_mobile.repository.ApiResult
+import com.example.dev_mobile.repository.JeuRepository
 import com.example.dev_mobile.repository.ReservantRepository
 import com.example.dev_mobile.repository.ReservationRepository
 import com.example.dev_mobile.utils.NetworkConnectivityObserver
@@ -26,7 +27,11 @@ data class ReservationUiState(
     val zonesTarifaires: List<ZoneTarifaireDto> = emptyList(),
     val reservants: List<ReservantDto> = emptyList(),
     val activeFilter: String? = null,
-    val isFromCache: Boolean = false
+    val isFromCache: Boolean = false,
+    // Pour la gestion des jeux
+    val allJeux: List<JeuSummaryDto> = emptyList(),
+    val isLoadingJeux: Boolean = false,
+    val jeuSearchQuery: String = ""
 )
 
 class ReservationViewModel(application: Application) : AndroidViewModel(application) {
@@ -35,6 +40,7 @@ class ReservationViewModel(application: Application) : AndroidViewModel(applicat
     private val connectivity  = NetworkConnectivityObserver(application)
     private val repository    = ReservationRepository(db, connectivity)
     private val reservantRepo = ReservantRepository(db, connectivity)
+    private val jeuRepo       = JeuRepository()
 
     private val _uiState = MutableStateFlow(ReservationUiState())
     val uiState: StateFlow<ReservationUiState> = _uiState
@@ -47,6 +53,7 @@ class ReservationViewModel(application: Application) : AndroidViewModel(applicat
         loadReservations()
         loadZonesTarifaires()
         loadReservants()
+        loadAllJeux()
     }
 
     fun loadReservations() {
@@ -87,6 +94,33 @@ class ReservationViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    private fun loadAllJeux() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingJeux = true) }
+            when (val r = jeuRepo.getAll()) {
+                is ApiResult.Success -> _uiState.update { it.copy(allJeux = r.data, isLoadingJeux = false) }
+                is ApiResult.Error   -> _uiState.update { it.copy(isLoadingJeux = false) }
+            }
+        }
+    }
+
+    fun setJeuSearchQuery(q: String) {
+        _uiState.update { it.copy(jeuSearchQuery = q) }
+    }
+
+    fun getFilteredJeuxForSearch(): List<JeuSummaryDto> {
+        val q = _uiState.value.jeuSearchQuery.trim().lowercase()
+        val current = _uiState.value.selectedReservation
+        val alreadyAdded = current?.jeux?.map { it.jeu_id }?.toSet() ?: emptySet()
+        val all = _uiState.value.allJeux.filter { it.id !in alreadyAdded }
+        if (q.isEmpty()) return all
+        return all.filter {
+            it.nom.lowercase().contains(q) ||
+                    (it.editeur_nom?.lowercase()?.contains(q) == true) ||
+                    (it.type_jeu?.lowercase()?.contains(q) == true)
+        }
+    }
+
     fun openDetail(id: Int) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoadingDetail = true) }
@@ -97,7 +131,7 @@ class ReservationViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    fun closeDetail() { _uiState.update { it.copy(selectedReservation = null) } }
+    fun closeDetail() { _uiState.update { it.copy(selectedReservation = null, jeuSearchQuery = "") } }
 
     fun createReservation(reservantId: Int, nbPrises: Int, notes: String?, viendrAnimer: Boolean, zones: List<ZoneReserveeRequest>) {
         if (currentFestivalId <= 0) return
@@ -185,11 +219,73 @@ class ReservationViewModel(application: Application) : AndroidViewModel(applicat
     fun addContactRelance(id: Int, dateContact: String?, typeContact: String?, notes: String?) {
         viewModelScope.launch {
             _uiState.update { it.copy(isSubmitting = true) }
-            val req = AddContactRelanceRequest(date_contact = dateContact, type_contact = typeContact?.ifBlank { null }, notes = notes?.ifBlank { null })
+            val req = AddContactRelanceRequest(
+                date_contact = dateContact,
+                type_contact = typeContact?.ifBlank { null },
+                notes = notes?.ifBlank { null }
+            )
             when (val r = repository.addContactRelance(id, req)) {
                 is ApiResult.Success -> {
                     openDetail(id)
                     _uiState.update { it.copy(isSubmitting = false, successMessage = "Contact ajouté ✅") }
+                }
+                is ApiResult.Error -> _uiState.update { it.copy(isSubmitting = false, errorMessage = r.message) }
+            }
+        }
+    }
+
+    // ── Gestion des jeux ──────────────────────────────────────────────────────
+
+    fun addJeuToReservation(reservationId: Int, jeuId: Int, nbExemplaires: Int, tablesAllouees: Double) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSubmitting = true, errorMessage = null) }
+            when (val r = repository.addJeu(reservationId, jeuId, nbExemplaires, tablesAllouees)) {
+                is ApiResult.Success -> {
+                    // Recharger le détail pour avoir la liste à jour
+                    openDetail(reservationId)
+                    _uiState.update { it.copy(isSubmitting = false, successMessage = "Jeu ajouté ✅", jeuSearchQuery = "") }
+                }
+                is ApiResult.Error -> _uiState.update { it.copy(isSubmitting = false, errorMessage = r.message) }
+            }
+        }
+    }
+
+    fun removeJeuFromReservation(reservationId: Int, jeuFestivalId: Int) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSubmitting = true) }
+            when (val r = repository.removeJeu(reservationId, jeuFestivalId)) {
+                is ApiResult.Success -> {
+                    // Mettre à jour localement sans rechargement complet
+                    val updated = _uiState.value.selectedReservation?.let { detail ->
+                        detail.copy(jeux = detail.jeux.filter { it.id != jeuFestivalId })
+                    }
+                    _uiState.update { it.copy(
+                        isSubmitting        = false,
+                        selectedReservation = updated,
+                        successMessage      = "Jeu retiré 🗑️"
+                    )}
+                }
+                is ApiResult.Error -> _uiState.update { it.copy(isSubmitting = false, errorMessage = r.message) }
+            }
+        }
+    }
+
+    fun toggleJeuRecu(reservationId: Int, jeuFestivalId: Int, currentRecu: Boolean) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSubmitting = true) }
+            when (val r = repository.updateJeuRecu(reservationId, jeuFestivalId, !currentRecu)) {
+                is ApiResult.Success -> {
+                    val updatedJeu = r.data
+                    val updated = _uiState.value.selectedReservation?.let { detail ->
+                        detail.copy(jeux = detail.jeux.map { j ->
+                            if (j.id == jeuFestivalId) updatedJeu else j
+                        })
+                    }
+                    _uiState.update { it.copy(
+                        isSubmitting        = false,
+                        selectedReservation = updated,
+                        successMessage      = if (!currentRecu) "Jeu marqué reçu ✅" else "Jeu marqué non reçu"
+                    )}
                 }
                 is ApiResult.Error -> _uiState.update { it.copy(isSubmitting = false, errorMessage = r.message) }
             }

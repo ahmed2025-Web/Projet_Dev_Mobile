@@ -20,7 +20,6 @@ class ReservationRepository(
                 val r = api.getByFestival(festivalId)
                 if (r.isSuccessful) {
                     val list = r.body() ?: emptyList()
-                    // Mettre à jour le cache
                     dao.deleteByFestival(festivalId)
                     dao.insertAll(list.map { it.toEntity() })
                     ApiResult.Success(list)
@@ -43,10 +42,7 @@ class ReservationRepository(
             try {
                 val r = api.getById(id)
                 if (r.isSuccessful && r.body() != null) ApiResult.Success(r.body()!!)
-                else {
-                    // Fallback cache avec info minimale
-                    buildDetailFromCache(id)
-                }
+                else buildDetailFromCache(id)
             } catch (e: Exception) {
                 buildDetailFromCache(id)
             }
@@ -172,12 +168,51 @@ class ReservationRepository(
 
     suspend fun getZonesTarifaires(festivalId: Int): ApiResult<List<ZoneTarifaireDto>> {
         if (!connectivity.isCurrentlyConnected()) {
-            return ApiResult.Success(emptyList()) // Zones pas cachées pour l'instant
+            return ApiResult.Success(emptyList())
         }
         return try {
             val r = zonesApi.getByFestival(festivalId)
             if (r.isSuccessful) ApiResult.Success(r.body() ?: emptyList())
             else ApiResult.Error("Erreur ${r.code()}")
+        } catch (e: Exception) { ApiResult.Error("Serveur injoignable : ${e.message}") }
+    }
+
+    // ── Gestion des jeux de réservation ───────────────────────────────────────
+
+    suspend fun addJeu(reservationId: Int, jeuId: Int, nbExemplaires: Int, tablesAllouees: Double): ApiResult<JeuFestivalDto> {
+        if (!connectivity.isCurrentlyConnected()) {
+            return ApiResult.Error("Action impossible hors ligne. Reconnectez-vous.")
+        }
+        return try {
+            val r = api.addJeu(reservationId, AddJeuFestivalRequest(
+                jeu_id = jeuId,
+                nombre_exemplaires = nbExemplaires,
+                tables_allouees = tablesAllouees
+            ))
+            if (r.isSuccessful && r.body() != null) ApiResult.Success(r.body()!!)
+            else ApiResult.Error(r.errorBody()?.string() ?: "Erreur ajout jeu")
+        } catch (e: Exception) { ApiResult.Error("Serveur injoignable : ${e.message}") }
+    }
+
+    suspend fun removeJeu(reservationId: Int, jeuFestivalId: Int): ApiResult<Unit> {
+        if (!connectivity.isCurrentlyConnected()) {
+            return ApiResult.Error("Action impossible hors ligne. Reconnectez-vous.")
+        }
+        return try {
+            val r = api.removeJeu(reservationId, jeuFestivalId)
+            if (r.isSuccessful) ApiResult.Success(Unit)
+            else ApiResult.Error(r.errorBody()?.string() ?: "Erreur suppression jeu")
+        } catch (e: Exception) { ApiResult.Error("Serveur injoignable : ${e.message}") }
+    }
+
+    suspend fun updateJeuRecu(reservationId: Int, jeuFestivalId: Int, recu: Boolean): ApiResult<JeuFestivalDto> {
+        if (!connectivity.isCurrentlyConnected()) {
+            return ApiResult.Error("Action impossible hors ligne. Reconnectez-vous.")
+        }
+        return try {
+            val r = api.updateJeuRecu(reservationId, jeuFestivalId, UpdateJeuRecuRequest(recu))
+            if (r.isSuccessful && r.body() != null) ApiResult.Success(r.body()!!)
+            else ApiResult.Error(r.errorBody()?.string() ?: "Erreur mise à jour")
         } catch (e: Exception) { ApiResult.Error("Serveur injoignable : ${e.message}") }
     }
 }

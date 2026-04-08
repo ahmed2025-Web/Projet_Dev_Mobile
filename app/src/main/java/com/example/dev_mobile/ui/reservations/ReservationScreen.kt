@@ -19,6 +19,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -37,6 +38,7 @@ private val DividerCol   = Color(0xFFF0F3F8)
 private val BorderGray   = Color(0xFFE2E6EF)
 private val ErrorRed     = Color(0xFFD32F2F)
 private val SuccessGreen = Color(0xFF388E3C)
+private val PurpleColor  = Color(0xFF7B1FA2)
 
 private val canCreate get() = UserSession.canManage()
 private val canEdit   get() = UserSession.canManage()
@@ -93,7 +95,6 @@ fun ReservationScreen(
 
     LaunchedEffect(festivalId) { vm.init(festivalId) }
 
-    // Recharger dès que connexion revient
     LaunchedEffect(isOnline) {
         if (isOnline && festivalId > 0) vm.loadReservations()
     }
@@ -108,6 +109,9 @@ fun ReservationScreen(
         ReservationDetailScreen(
             detail                   = detail,
             zonesTarifaires          = state.zonesTarifaires,
+            allJeux                  = state.allJeux,
+            jeuSearchQuery           = state.jeuSearchQuery,
+            filteredJeuxForSearch    = vm.getFilteredJeuxForSearch(),
             isOnline                 = isOnline,
             isSubmitting             = state.isSubmitting,
             onBack                   = { vm.closeDetail() },
@@ -117,7 +121,11 @@ fun ReservationScreen(
             onUpdate                 = { nbPrises, remiseT, remiseM, notes, animer, zones ->
                 vm.updateReservation(detail.id, nbPrises, remiseT, remiseM, notes, animer, zones)
             },
-            onDelete = { vm.deleteReservation(detail.id) }
+            onDelete                 = { vm.deleteReservation(detail.id) },
+            onJeuSearchChange        = { vm.setJeuSearchQuery(it) },
+            onAddJeu                 = { jeuId, nbEx, tables -> vm.addJeuToReservation(detail.id, jeuId, nbEx, tables) },
+            onRemoveJeu              = { jeuFestivalId -> vm.removeJeuFromReservation(detail.id, jeuFestivalId) },
+            onToggleJeuRecu          = { jeuFestivalId, recu -> vm.toggleJeuRecu(detail.id, jeuFestivalId, recu) }
         )
         return
     }
@@ -151,16 +159,13 @@ fun ReservationScreen(
                 Card(
                     modifier = Modifier.padding(16.dp).fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isErr) Color(0xFFFFEBEE) else Color(0xFFE8F5E9)
-                    ),
+                    colors = CardDefaults.cardColors(containerColor = if (isErr) Color(0xFFFFEBEE) else Color(0xFFE8F5E9)),
                     elevation = CardDefaults.cardElevation(4.dp)
                 ) {
                     Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(if (isErr) "❌" else "✅", fontSize = 18.sp)
                         Spacer(Modifier.width(12.dp))
-                        Text(data.visuals.message,
-                            color = if (isErr) ErrorRed else SuccessGreen,
+                        Text(data.visuals.message, color = if (isErr) ErrorRed else SuccessGreen,
                             fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     }
                 }
@@ -169,8 +174,6 @@ fun ReservationScreen(
         containerColor = PageBg
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-
-            // En-tête
             Row(
                 modifier = Modifier.fillMaxWidth().background(CardBg).padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -178,10 +181,7 @@ fun ReservationScreen(
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Réservations", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextDark)
-                        if (!isOnline) {
-                            Spacer(Modifier.width(8.dp))
-                            OfflineBadge()
-                        }
+                        if (!isOnline) { Spacer(Modifier.width(8.dp)); OfflineBadge() }
                     }
                     Text("${vm.getFilteredReservations().size} résultat(s)", fontSize = 12.sp, color = TextGray)
                 }
@@ -195,10 +195,7 @@ fun ReservationScreen(
                             disabledContainerColor = Color(0xFFCCCCCC)
                         )
                     ) {
-                        Text(
-                            if (isOnline) "+ Nouvelle" else "🔒 Hors ligne",
-                            fontSize = 13.sp, color = Color.White
-                        )
+                        Text(if (isOnline) "+ Nouvelle" else "🔒 Hors ligne", fontSize = 13.sp, color = Color.White)
                     }
                 }
             }
@@ -215,8 +212,7 @@ fun ReservationScreen(
                     val count = state.reservations.count { it.etat_contact == etat }
                     if (count > 0) {
                         val (bg, fg) = etatContactColor(etat)
-                        FilterChipItem("${etatContactLabel(etat)} ($count)", state.activeFilter == etat,
-                            bg, fg) { vm.setFilter(etat) }
+                        FilterChipItem("${etatContactLabel(etat)} ($count)", state.activeFilter == etat, bg, fg) { vm.setFilter(etat) }
                     }
                 }
             }
@@ -228,7 +224,7 @@ fun ReservationScreen(
                     CircularProgressIndicator(color = AccentBlue)
                 }
                 displayed.isEmpty() && !isOnline -> OfflineEmptyState(
-                    message  = "Aucune réservation en cache",
+                    message = "Aucune réservation en cache",
                     subtitle = "Reconnectez-vous pour charger les données"
                 )
                 displayed.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -240,12 +236,9 @@ fun ReservationScreen(
                     }
                 }
                 else -> {
-                    // Banner cache
                     if (state.isFromCache) {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                            shape = RoundedCornerShape(10.dp), color = Color(0xFFFFF3E0)
-                        ) {
+                        Surface(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(10.dp), color = Color(0xFFFFF3E0)) {
                             Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text("📡", fontSize = 14.sp); Spacer(Modifier.width(8.dp))
                                 Text("Données en cache — modification impossible hors ligne",
@@ -253,10 +246,7 @@ fun ReservationScreen(
                             }
                         }
                     }
-                    LazyColumn(
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
+                    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(displayed, key = { it.id }) { res ->
                             ReservationCard(
                                 reservation    = res,
@@ -264,7 +254,7 @@ fun ReservationScreen(
                                 onContactClick = {
                                     if (isOnline) vm.updateWorkflowContact(res.id, nextEtatContact(res.etat_contact))
                                 },
-                                onClick        = { vm.openDetail(res.id) }
+                                onClick = { vm.openDetail(res.id) }
                             )
                         }
                         item { Spacer(Modifier.height(16.dp)) }
@@ -301,8 +291,7 @@ private fun nextEtatContact(current: String): String = when (current) {
 private fun FilterChipItem(label: String, selected: Boolean, bgColor: Color, textColor: Color, onClick: () -> Unit) {
     Surface(shape = RoundedCornerShape(20.dp), color = if (selected) bgColor else Color(0xFFF5F5F5),
         modifier = Modifier.clickable { onClick() }) {
-        Text(label, fontSize = 11.sp,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+        Text(label, fontSize = 11.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
             color = if (selected) textColor else TextGray,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
     }
@@ -336,12 +325,8 @@ private fun ReservationCard(
             }
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    shape = RoundedCornerShape(10.dp), color = contactBg,
-                    modifier = Modifier.clickable(
-                        enabled = canEdit && isOnline && reservation.etat_contact != "jeux_recus"
-                    ) { onContactClick() }
-                ) {
+                Surface(shape = RoundedCornerShape(10.dp), color = contactBg,
+                    modifier = Modifier.clickable(enabled = canEdit && isOnline && reservation.etat_contact != "jeux_recus") { onContactClick() }) {
                     Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(etatContactLabel(reservation.etat_contact), fontSize = 11.sp, color = contactFg, fontWeight = FontWeight.SemiBold)
                         if (canEdit && isOnline && reservation.etat_contact != "jeux_recus") {
@@ -362,16 +347,24 @@ private fun ReservationCard(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (reservation.nb_tables_reservees > 0) Text("🪑 ${reservation.nb_tables_reservees} table(s)", fontSize = 11.sp, color = TextGray)
                 if (reservation.nb_jeux > 0) Text("🎮 ${reservation.nb_jeux} jeu(x)", fontSize = 11.sp, color = TextGray)
+                if (reservation.nb_jeux_places > 0) Text("📍 ${reservation.nb_jeux_places} placé(s)", fontSize = 11.sp, color = SuccessGreen)
                 reservation.date_dernier_contact?.take(10)?.let { Text("📅 $it", fontSize = 11.sp, color = TextGray) }
             }
         }
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ÉCRAN DE DÉTAIL
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
 private fun ReservationDetailScreen(
     detail: ReservationDetailDto,
     zonesTarifaires: List<ZoneTarifaireDto>,
+    allJeux: List<JeuSummaryDto>,
+    jeuSearchQuery: String,
+    filteredJeuxForSearch: List<JeuSummaryDto>,
     isOnline: Boolean,
     isSubmitting: Boolean,
     onBack: () -> Unit,
@@ -379,13 +372,19 @@ private fun ReservationDetailScreen(
     onUpdateWorkflowPresence: (String) -> Unit,
     onAddContactRelance: (String?, String?, String?) -> Unit,
     onUpdate: (Int, Int, Double, String?, Boolean, List<ZoneReserveeRequest>) -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onJeuSearchChange: (String) -> Unit,
+    onAddJeu: (jeuId: Int, nbEx: Int, tables: Double) -> Unit,
+    onRemoveJeu: (jeuFestivalId: Int) -> Unit,
+    onToggleJeuRecu: (jeuFestivalId: Int, currentRecu: Boolean) -> Unit
 ) {
     var showEditDialog       by remember { mutableStateOf(false) }
     var showDeleteDialog     by remember { mutableStateOf(false) }
     var showAddRelanceDialog by remember { mutableStateOf(false) }
     var showContactDropdown  by remember { mutableStateOf(false) }
     var showPresenceDropdown by remember { mutableStateOf(false) }
+    // Pour l'ajout de jeu
+    var showAddJeuDialog     by remember { mutableStateOf(false) }
 
     val (contactBg, contactFg)   = etatContactColor(detail.etat_contact)
     val (presenceBg, presenceFg) = etatPresenceColor(detail.etat_presence)
@@ -407,14 +406,12 @@ private fun ReservationDetailScreen(
         }
         HorizontalDivider(color = BorderGray)
 
-        // Bannière hors ligne
         if (!isOnline) {
             Surface(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                 shape = RoundedCornerShape(10.dp), color = Color(0xFFFFF3E0)) {
                 Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("📡", fontSize = 14.sp); Spacer(Modifier.width(8.dp))
-                    Text("Mode hors ligne — consultation uniquement, détails partiels",
-                        fontSize = 12.sp, color = Color(0xFFE65100))
+                    Text("Mode hors ligne — consultation uniquement", fontSize = 12.sp, color = Color(0xFFE65100))
                 }
             }
         }
@@ -422,7 +419,7 @@ private fun ReservationDetailScreen(
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)) {
 
-            // Workflow contact
+            // ── Workflow Contact ──────────────────────────────────────────────
             Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = CardBg), elevation = CardDefaults.cardElevation(2.dp)) {
                 Column(Modifier.padding(16.dp)) {
                     Text("Workflow de contact", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextDark)
@@ -441,9 +438,9 @@ private fun ReservationDetailScreen(
                                 }
                                 DropdownMenu(expanded = showContactDropdown, onDismissRequest = { showContactDropdown = false }) {
                                     ETATS_CONTACT.forEach { etat ->
+                                        val (bg, fg) = etatContactColor(etat)
                                         DropdownMenuItem(
                                             text = {
-                                                val (bg, fg) = etatContactColor(etat)
                                                 Surface(shape = RoundedCornerShape(8.dp), color = bg) {
                                                     Text(etatContactLabel(etat), fontSize = 13.sp, color = fg,
                                                         fontWeight = if (etat == detail.etat_contact) FontWeight.Bold else FontWeight.Normal,
@@ -478,7 +475,7 @@ private fun ReservationDetailScreen(
                 }
             }
 
-            // Présence
+            // ── Présence ──────────────────────────────────────────────────────
             Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = CardBg), elevation = CardDefaults.cardElevation(2.dp)) {
                 Column(Modifier.padding(16.dp)) {
                     Text("Présence", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextDark)
@@ -496,9 +493,9 @@ private fun ReservationDetailScreen(
                             }
                             DropdownMenu(expanded = showPresenceDropdown, onDismissRequest = { showPresenceDropdown = false }) {
                                 ETATS_PRESENCE.forEach { etat ->
+                                    val (bg, fg) = etatPresenceColor(etat)
                                     DropdownMenuItem(
                                         text = {
-                                            val (bg, fg) = etatPresenceColor(etat)
                                             Surface(shape = RoundedCornerShape(8.dp), color = bg) {
                                                 Text(etatPresenceLabel(etat), fontSize = 13.sp, color = fg,
                                                     fontWeight = if (etat == detail.etat_presence) FontWeight.Bold else FontWeight.Normal,
@@ -524,7 +521,7 @@ private fun ReservationDetailScreen(
                 }
             }
 
-            // Zones réservées
+            // ── Zones tarifaires réservées ────────────────────────────────────
             Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = CardBg), elevation = CardDefaults.cardElevation(2.dp)) {
                 Column(Modifier.padding(16.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -537,16 +534,22 @@ private fun ReservationDetailScreen(
                     } else {
                         detail.zones_reservees.forEachIndexed { i, z ->
                             if (i > 0) HorizontalDivider(color = DividerCol, modifier = Modifier.padding(vertical = 6.dp))
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(z.zone_tarifaire_nom ?: "Zone ${z.zone_tarifaire_id}", fontSize = 13.sp, color = TextDark)
-                                Text("${z.nombre_tables} tables × %.2f €".format(z.prix_unitaire), fontSize = 12.sp, color = TextGray)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(z.zone_tarifaire_nom ?: "Zone ${z.zone_tarifaire_id}", fontSize = 13.sp, color = TextDark, fontWeight = FontWeight.Medium)
+                                    Text("%.2f €/table".format(z.prix_unitaire), fontSize = 11.sp, color = TextGray)
+                                }
+                                Surface(shape = RoundedCornerShape(8.dp), color = Color(0xFFE8F0FB)) {
+                                    Text("${z.nombre_tables} table(s)", fontSize = 12.sp, color = AccentBlue,
+                                        fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+                                }
                             }
                         }
                     }
                 }
             }
 
-            // Facturation
+            // ── Facturation ───────────────────────────────────────────────────
             if (detail.montant_brut > 0 || detail.remise_tables > 0 || detail.remise_montant > 0) {
                 Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = CardBg), elevation = CardDefaults.cardElevation(2.dp)) {
                     Column(Modifier.padding(16.dp)) {
@@ -562,7 +565,7 @@ private fun ReservationDetailScreen(
                 }
             }
 
-            // Notes
+            // ── Notes ─────────────────────────────────────────────────────────
             detail.notes?.let { notes ->
                 if (notes.isNotBlank()) {
                     Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = CardBg), elevation = CardDefaults.cardElevation(2.dp)) {
@@ -575,22 +578,19 @@ private fun ReservationDetailScreen(
                 }
             }
 
-            // Jeux
-            if (detail.nb_jeux > 0) {
-                Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = CardBg), elevation = CardDefaults.cardElevation(2.dp)) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("Jeux (${detail.nb_jeux})", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextDark)
-                        Spacer(Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("✅ ${detail.nb_jeux_places} placé(s)", fontSize = 12.sp, color = SuccessGreen)
-                            Text("📦 ${detail.nb_jeux_recus} reçu(s)", fontSize = 12.sp, color = AccentBlue)
-                        }
-                    }
-                }
-            }
+            // ── Section Jeux ─────────────────────────────────────────────────
+            JeuxReservationSection(
+                detail       = detail,
+                isOnline     = isOnline,
+                isSubmitting = isSubmitting,
+                onAddClick   = { showAddJeuDialog = true },
+                onRemoveJeu  = onRemoveJeu,
+                onToggleRecu = onToggleJeuRecu
+            )
         }
     }
 
+    // Dialogs
     if (showEditDialog && isOnline) {
         EditReservationDialog(
             detail = detail, zonesTarifaires = zonesTarifaires, isLoading = isSubmitting,
@@ -624,10 +624,541 @@ private fun ReservationDetailScreen(
     }
 
     if (showAddRelanceDialog && isOnline) {
-        AddRelanceDialog(
-            isLoading = isSubmitting,
-            onDismiss = { showAddRelanceDialog = false },
-            onConfirm = { date, type, notes -> onAddContactRelance(date, type, notes); showAddRelanceDialog = false }
+        AddRelanceDialog(isLoading = isSubmitting, onDismiss = { showAddRelanceDialog = false },
+            onConfirm = { date, type, notes -> onAddContactRelance(date, type, notes); showAddRelanceDialog = false })
+    }
+
+    if (showAddJeuDialog && isOnline) {
+        AddJeuDialog(
+            filteredJeux   = filteredJeuxForSearch,
+            searchQuery    = jeuSearchQuery,
+            isLoading      = isSubmitting,
+            onSearchChange = onJeuSearchChange,
+            onDismiss      = { showAddJeuDialog = false; onJeuSearchChange("") },
+            onConfirm      = { jeuId, nbEx, tables ->
+                onAddJeu(jeuId, nbEx, tables)
+                showAddJeuDialog = false
+            }
+        )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION JEUX DE LA RÉSERVATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun JeuxReservationSection(
+    detail: ReservationDetailDto,
+    isOnline: Boolean,
+    isSubmitting: Boolean,
+    onAddClick: () -> Unit,
+    onRemoveJeu: (Int) -> Unit,
+    onToggleRecu: (Int, Boolean) -> Unit
+) {
+    val nonPlaces = detail.jeux.filter { !it.est_place }
+    val places    = detail.jeux.filter { it.est_place }
+
+    Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = CardBg), elevation = CardDefaults.cardElevation(2.dp)) {
+        Column(Modifier.padding(16.dp)) {
+            // Header
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("🎮", fontSize = 18.sp)
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Jeux de la réservation", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextDark)
+                    Text("${detail.jeux.size} jeu(x) · ${nonPlaces.size} non placé(s) · ${detail.nb_jeux_recus} reçu(s)",
+                        fontSize = 11.sp, color = TextGray)
+                }
+                if (canEdit && isOnline) {
+                    Button(
+                        onClick  = onAddClick,
+                        shape    = RoundedCornerShape(8.dp),
+                        colors   = ButtonDefaults.buttonColors(containerColor = AccentBlue),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text("+ Ajouter", fontSize = 12.sp, color = Color.White)
+                    }
+                }
+            }
+
+            if (detail.jeux.isEmpty()) {
+                Spacer(Modifier.height(14.dp))
+                Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("🎲", fontSize = 32.sp)
+                        Spacer(Modifier.height(6.dp))
+                        Text("Aucun jeu ajouté", fontSize = 13.sp, color = TextGray)
+                        Text("Ajoutez des jeux pour cette réservation", fontSize = 11.sp, color = TextGray)
+                    }
+                }
+                return@Column
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            // Jeux non placés
+            if (nonPlaces.isNotEmpty()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFFFFF3E0)) {
+                        Text("Non placés (${nonPlaces.size})", fontSize = 11.sp, color = Color(0xFFE65100),
+                            fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
+                    }
+                    Spacer(Modifier.width(6.dp))
+                    Text("→ À placer via Zones", fontSize = 10.sp, color = TextGray)
+                }
+                Spacer(Modifier.height(8.dp))
+                nonPlaces.forEach { jeu ->
+                    JeuFestivalCard(
+                        jeu         = jeu,
+                        isOnline    = isOnline,
+                        isSubmitting = isSubmitting,
+                        onRemove    = { onRemoveJeu(jeu.id) },
+                        onToggleRecu = { onToggleRecu(jeu.id, jeu.jeu_recu) }
+                    )
+                    Spacer(Modifier.height(6.dp))
+                }
+            }
+
+            // Jeux placés
+            if (places.isNotEmpty()) {
+                if (nonPlaces.isNotEmpty()) {
+                    HorizontalDivider(color = DividerCol, modifier = Modifier.padding(vertical = 8.dp))
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFFE8F5E9)) {
+                        Text("Placés (${places.size})", fontSize = 11.sp, color = SuccessGreen,
+                            fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                places.forEach { jeu ->
+                    JeuFestivalCard(
+                        jeu          = jeu,
+                        isOnline     = isOnline,
+                        isSubmitting = isSubmitting,
+                        onRemove     = { onRemoveJeu(jeu.id) },
+                        onToggleRecu = { onToggleRecu(jeu.id, jeu.jeu_recu) }
+                    )
+                    Spacer(Modifier.height(6.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun JeuFestivalCard(
+    jeu: JeuFestivalDto,
+    isOnline: Boolean,
+    isSubmitting: Boolean,
+    onRemove: () -> Unit,
+    onToggleRecu: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = if (jeu.est_place) Color(0xFFF0FFF4) else Color(0xFFFAFAFA),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.size(36.dp).clip(CircleShape)
+                        .background(if (jeu.est_place) Color(0xFFD4EDDA) else Color(0xFFE8F0FB)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(if (jeu.est_place) "📍" else "🎮", fontSize = 16.sp)
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(jeu.jeu_nom ?: "Jeu #${jeu.jeu_id}", fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold, color = TextDark, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        jeu.editeur_nom?.let { Text(it, fontSize = 11.sp, color = AccentBlue, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        Text("×${jeu.nombre_exemplaires}", fontSize = 11.sp, color = TextGray)
+                        Text("${jeu.tables_allouees} table(s)", fontSize = 11.sp, color = TextGray)
+                    }
+                    if (jeu.est_place && jeu.zone_plan_nom != null) {
+                        Text("📍 ${jeu.zone_plan_nom}", fontSize = 10.sp, color = SuccessGreen, fontWeight = FontWeight.Medium)
+                    }
+                }
+                if (canEdit && isOnline) {
+                    // Bouton reçu
+                    TextButton(
+                        onClick  = onToggleRecu,
+                        enabled  = !isSubmitting,
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(if (jeu.jeu_recu) "📦✅" else "📦", fontSize = 16.sp)
+                    }
+                    // Bouton supprimer
+                    TextButton(
+                        onClick  = onRemove,
+                        enabled  = !isSubmitting,
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
+                    ) {
+                        Text("✕", fontSize = 14.sp, color = ErrorRed)
+                    }
+                }
+            }
+            // Badge "Jeu reçu" si applicable
+            if (jeu.jeu_recu) {
+                Spacer(Modifier.height(4.dp))
+                Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFFE8F5E9)) {
+                    Text("Jeu reçu ✓", fontSize = 10.sp, color = SuccessGreen,
+                        fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DIALOG AJOUT JEU
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun AddJeuDialog(
+    filteredJeux: List<JeuSummaryDto>,
+    searchQuery: String,
+    isLoading: Boolean,
+    onSearchChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: (jeuId: Int, nbEx: Int, tables: Double) -> Unit
+) {
+    var selectedJeu       by remember { mutableStateOf<JeuSummaryDto?>(null) }
+    var nbExemplaires     by remember { mutableStateOf("1") }
+    var tablesAllouees    by remember { mutableStateOf("1") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Ajouter un jeu à la réservation", fontWeight = FontWeight.Bold, fontSize = 15.sp) },
+        text = {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                // Barre de recherche
+                OutlinedTextField(
+                    value         = searchQuery,
+                    onValueChange = onSearchChange,
+                    label         = { Text("Rechercher un jeu…") },
+                    leadingIcon   = { Text("🔍", fontSize = 14.sp, modifier = Modifier.padding(start = 4.dp)) },
+                    trailingIcon  = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { onSearchChange("") }) { Text("✕", fontSize = 12.sp, color = TextGray) }
+                        }
+                    },
+                    singleLine    = true,
+                    shape         = RoundedCornerShape(10.dp),
+                    modifier      = Modifier.fillMaxWidth()
+                )
+
+                // Jeu sélectionné
+                if (selectedJeu != null) {
+                    Surface(shape = RoundedCornerShape(10.dp), color = Color(0xFFE8F0FB), modifier = Modifier.fillMaxWidth()) {
+                        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(selectedJeu!!.nom, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextDark)
+                                Text(selectedJeu!!.editeur_nom ?: "", fontSize = 11.sp, color = AccentBlue)
+                            }
+                            TextButton(onClick = { selectedJeu = null }) { Text("✕", color = TextGray) }
+                        }
+                    }
+                }
+
+                // Liste des jeux
+                if (selectedJeu == null) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 220.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        if (filteredJeux.isEmpty()) {
+                            Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
+                                Text(
+                                    if (searchQuery.isEmpty()) "Tous les jeux déjà ajoutés ou aucun jeu"
+                                    else "Aucun résultat pour « $searchQuery »",
+                                    fontSize = 12.sp, color = TextGray
+                                )
+                            }
+                        } else {
+                            filteredJeux.forEach { jeu ->
+                                Surface(
+                                    shape    = RoundedCornerShape(8.dp),
+                                    color    = Color(0xFFF8FAFD),
+                                    modifier = Modifier.fillMaxWidth().clickable { selectedJeu = jeu }
+                                ) {
+                                    Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(jeu.nom, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = TextDark,
+                                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                Text(jeu.editeur_nom ?: "", fontSize = 11.sp, color = AccentBlue)
+                                                jeu.type_jeu?.let { Text("• $it", fontSize = 11.sp, color = TextGray) }
+                                            }
+                                        }
+                                        Text("›", fontSize = 16.sp, color = TextGray)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Paramètres du jeu
+                if (selectedJeu != null) {
+                    HorizontalDivider(color = BorderGray)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value         = nbExemplaires,
+                            onValueChange = { nbExemplaires = it },
+                            label         = { Text("Exemplaires") },
+                            singleLine    = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier      = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value         = tablesAllouees,
+                            onValueChange = { tablesAllouees = it },
+                            label         = { Text("Tables") },
+                            singleLine    = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier      = Modifier.weight(1f)
+                        )
+                    }
+                    Text("ℹ️ Le jeu sera non placé initialement. Placez-le ensuite dans Zones → Plan.",
+                        fontSize = 11.sp, color = TextGray, modifier = Modifier.padding(top = 2.dp))
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick  = {
+                    val jeu = selectedJeu ?: return@Button
+                    onConfirm(
+                        jeu.id,
+                        nbExemplaires.toIntOrNull()?.coerceAtLeast(1) ?: 1,
+                        tablesAllouees.toDoubleOrNull()?.coerceAtLeast(0.5) ?: 1.0
+                    )
+                },
+                enabled  = selectedJeu != null && !isLoading,
+                colors   = ButtonDefaults.buttonColors(containerColor = AccentBlue)
+            ) {
+                if (isLoading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
+                else Text("Ajouter", color = Color.White)
+            }
+        },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Annuler") } }
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DIALOGS CRÉATION / MODIFICATION DE RÉSERVATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun CreateReservationDialog(
+    reservants: List<ReservantDto>,
+    zonesTarifaires: List<ZoneTarifaireDto>,
+    isLoading: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (Int, Int, String?, Boolean, List<ZoneReserveeRequest>) -> Unit
+) {
+    var selectedReservantId by remember { mutableStateOf<Int?>(null) }
+    var showReservantMenu   by remember { mutableStateOf(false) }
+    var nbPrises            by remember { mutableStateOf("0") }
+    var notes               by remember { mutableStateOf("") }
+    var viendrAnimer        by remember { mutableStateOf(true) }
+    val zonesMap = remember { mutableStateMapOf<Int, String>() }
+    val canConfirm = selectedReservantId != null && !isLoading
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Nouvelle réservation", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+
+                // Réservant
+                Text("Réservant *", fontSize = 13.sp, color = TextGray, fontWeight = FontWeight.Medium)
+                Box {
+                    OutlinedButton(onClick = { showReservantMenu = true }, shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text(reservants.find { it.id == selectedReservantId }?.nom ?: "Choisir un réservant",
+                                fontSize = 13.sp, color = if (selectedReservantId != null) TextDark else TextGray)
+                            Text("▾", fontSize = 12.sp, color = TextGray)
+                        }
+                    }
+                    DropdownMenu(expanded = showReservantMenu, onDismissRequest = { showReservantMenu = false }) {
+                        reservants.forEach { r ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(r.nom, fontSize = 13.sp, fontWeight = if (r.id == selectedReservantId) FontWeight.Bold else FontWeight.Normal)
+                                        Text(r.type_reservant, fontSize = 11.sp, color = TextGray)
+                                    }
+                                },
+                                onClick = { selectedReservantId = r.id; showReservantMenu = false }
+                            )
+                        }
+                    }
+                }
+
+                // Zones tarifaires
+                HorizontalDivider(color = BorderGray)
+                Text("Tables par zone tarifaire", fontSize = 13.sp, color = TextGray, fontWeight = FontWeight.Medium)
+                if (zonesTarifaires.isEmpty()) {
+                    Card(shape = RoundedCornerShape(8.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1))) {
+                        Text("⚠ Aucune zone tarifaire pour ce festival. Créez-en d'abord dans Zones.",
+                            fontSize = 12.sp, color = Color(0xFFE65100), modifier = Modifier.padding(10.dp))
+                    }
+                } else {
+                    zonesTarifaires.forEach { zone ->
+                        ZoneTarifaireInputRow(zone = zone, value = zonesMap[zone.id] ?: "", onValueChange = { zonesMap[zone.id] = it })
+                    }
+                }
+
+                // Options
+                HorizontalDivider(color = BorderGray)
+                OutlinedTextField(value = nbPrises, onValueChange = { nbPrises = it },
+                    label = { Text("Nb prises électriques") }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = notes, onValueChange = { notes = it },
+                    label = { Text("Notes") }, modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 3)
+                Row(Modifier.fillMaxWidth().clickable { viendrAnimer = !viendrAnimer }, verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = viendrAnimer, onCheckedChange = { viendrAnimer = it })
+                    Spacer(Modifier.width(8.dp))
+                    Text("Le réservant viendra animer", fontSize = 13.sp, color = TextDark)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val zones = zonesMap.entries
+                        .filter { (_, v) -> v.toIntOrNull() != null && v.toInt() > 0 }
+                        .map { (id, v) -> ZoneReserveeRequest(id, v.toInt()) }
+                    onConfirm(selectedReservantId!!, nbPrises.toIntOrNull() ?: 0, notes.ifBlank { null }, viendrAnimer, zones)
+                },
+                enabled = canConfirm, colors = ButtonDefaults.buttonColors(containerColor = TextDark)
+            ) {
+                if (isLoading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
+                else Text("Créer", color = Color.White)
+            }
+        },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Annuler") } }
+    )
+}
+
+@Composable
+private fun EditReservationDialog(
+    detail: ReservationDetailDto,
+    zonesTarifaires: List<ZoneTarifaireDto>,
+    isLoading: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (Int, Int, Double, String?, Boolean, List<ZoneReserveeRequest>) -> Unit
+) {
+    var nbPrises      by remember { mutableStateOf(detail.nb_prises_electriques.toString()) }
+    var remiseTables  by remember { mutableStateOf(detail.remise_tables.toString()) }
+    var remiseMontant by remember { mutableStateOf(detail.remise_montant.toString()) }
+    var notes         by remember { mutableStateOf(detail.notes ?: "") }
+    var viendrAnimer  by remember { mutableStateOf(detail.viendra_animer) }
+    val zonesMap = remember {
+        mutableStateMapOf<Int, String>().also { map ->
+            detail.zones_reservees.forEach { z -> map[z.zone_tarifaire_id] = z.nombre_tables.toString() }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Modifier la réservation", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(detail.reservant_nom, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = AccentBlue)
+
+                // Zones tarifaires
+                Text("Tables par zone tarifaire", fontSize = 13.sp, color = TextGray, fontWeight = FontWeight.Medium)
+                if (zonesTarifaires.isEmpty()) {
+                    Card(shape = RoundedCornerShape(8.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1))) {
+                        Text("⚠ Aucune zone tarifaire configurée.", fontSize = 12.sp, color = Color(0xFFE65100), modifier = Modifier.padding(10.dp))
+                    }
+                } else {
+                    zonesTarifaires.forEach { zone ->
+                        ZoneTarifaireInputRow(zone = zone, value = zonesMap[zone.id] ?: "", onValueChange = { zonesMap[zone.id] = it })
+                    }
+                }
+
+                HorizontalDivider(color = BorderGray)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(value = nbPrises, onValueChange = { nbPrises = it },
+                        label = { Text("Prises élec.") }, singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                    OutlinedTextField(value = remiseTables, onValueChange = { remiseTables = it },
+                        label = { Text("Remise tables") }, singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                }
+                OutlinedTextField(value = remiseMontant, onValueChange = { remiseMontant = it },
+                    label = { Text("Remise montant (€)") }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = notes, onValueChange = { notes = it },
+                    label = { Text("Notes") }, modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 3)
+                Row(Modifier.fillMaxWidth().clickable { viendrAnimer = !viendrAnimer }, verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = viendrAnimer, onCheckedChange = { viendrAnimer = it })
+                    Spacer(Modifier.width(8.dp)); Text("Viendra animer", fontSize = 13.sp, color = TextDark)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val zones = zonesMap.entries
+                        .filter { (_, v) -> v.toIntOrNull() != null && v.toInt() > 0 }
+                        .map { (id, v) -> ZoneReserveeRequest(id, v.toInt()) }
+                    onConfirm(nbPrises.toIntOrNull() ?: 0, remiseTables.toIntOrNull() ?: 0,
+                        remiseMontant.toDoubleOrNull() ?: 0.0, notes.ifBlank { null }, viendrAnimer, zones)
+                },
+                enabled = !isLoading, colors = ButtonDefaults.buttonColors(containerColor = TextDark)
+            ) {
+                if (isLoading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
+                else Text("Enregistrer", color = Color.White)
+            }
+        },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Annuler") } }
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COMPOSANTS UTILITAIRES
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun ZoneTarifaireInputRow(zone: ZoneTarifaireDto, value: String, onValueChange: (String) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(zone.nom, fontSize = 13.sp, color = TextDark, fontWeight = FontWeight.Medium)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("%.2f €/table".format(zone.prix_table), fontSize = 11.sp, color = TextGray)
+                Text("·", fontSize = 11.sp, color = TextGray)
+                val dispo = zone.tables_disponibles
+                Text(
+                    "$dispo/${zone.nombre_tables_total} dispo",
+                    fontSize = 11.sp,
+                    color = if (dispo > 0) SuccessGreen else ErrorRed,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+        OutlinedTextField(
+            value           = value,
+            onValueChange   = onValueChange,
+            label           = { Text("Nb") },
+            singleLine      = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier        = Modifier.width(80.dp)
         )
     }
 }
@@ -639,7 +1170,7 @@ private fun ContactWorkflowStepper(currentEtat: String) {
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
         steps.forEachIndexed { i, etat ->
             val (bg, fg) = etatContactColor(etat)
-            val isActive = i <= currentIdx
+            val isActive  = i <= currentIdx
             val isCurrent = i == currentIdx
             if (i > 0) Box(Modifier.width(8.dp).height(2.dp).background(if (isActive) AccentBlue.copy(alpha = 0.4f) else DividerCol))
             Surface(shape = RoundedCornerShape(6.dp), color = if (isCurrent) bg else if (isActive) bg.copy(alpha = 0.6f) else Color(0xFFF5F5F5)) {
@@ -660,154 +1191,6 @@ private fun FactureRow(label: String, value: String, bold: Boolean = false, colo
         Text(label, fontSize = 13.sp, color = TextGray)
         Text(value, fontSize = 13.sp, color = color, fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal)
     }
-}
-
-@Composable
-private fun CreateReservationDialog(
-    reservants: List<ReservantDto>, zonesTarifaires: List<ZoneTarifaireDto>,
-    isLoading: Boolean, onDismiss: () -> Unit,
-    onConfirm: (Int, Int, String?, Boolean, List<ZoneReserveeRequest>) -> Unit
-) {
-    var selectedReservantId by remember { mutableStateOf<Int?>(null) }
-    var showReservantMenu   by remember { mutableStateOf(false) }
-    var nbPrises            by remember { mutableStateOf("0") }
-    var notes               by remember { mutableStateOf("") }
-    var viendrAnimer        by remember { mutableStateOf(true) }
-    val zonesMap = remember { mutableStateMapOf<Int, String>() }
-    val canConfirm = selectedReservantId != null && !isLoading
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Nouvelle réservation", fontWeight = FontWeight.Bold) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Réservant *", fontSize = 13.sp, color = TextGray, fontWeight = FontWeight.Medium)
-                Box {
-                    OutlinedButton(onClick = { showReservantMenu = true }, shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text(reservants.find { it.id == selectedReservantId }?.nom ?: "Choisir un réservant",
-                                fontSize = 13.sp, color = if (selectedReservantId != null) TextDark else TextGray)
-                            Text("▾", fontSize = 12.sp, color = TextGray)
-                        }
-                    }
-                    DropdownMenu(expanded = showReservantMenu, onDismissRequest = { showReservantMenu = false }) {
-                        reservants.forEach { r ->
-                            DropdownMenuItem(
-                                text = { Column { Text(r.nom, fontSize = 13.sp, fontWeight = if (r.id == selectedReservantId) FontWeight.Bold else FontWeight.Normal); Text(r.type_reservant, fontSize = 11.sp, color = TextGray) } },
-                                onClick = { selectedReservantId = r.id; showReservantMenu = false }
-                            )
-                        }
-                    }
-                }
-                HorizontalDivider(color = BorderGray)
-                if (zonesTarifaires.isNotEmpty()) {
-                    Text("Tables par zone tarifaire", fontSize = 13.sp, color = TextGray, fontWeight = FontWeight.Medium)
-                    zonesTarifaires.forEach { zone ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(zone.nom, fontSize = 13.sp, color = TextDark)
-                                Text("${zone.tables_disponibles} dispo · %.2f €/table".format(zone.prix_table), fontSize = 11.sp, color = TextGray)
-                            }
-                            OutlinedTextField(value = zonesMap[zone.id] ?: "", onValueChange = { zonesMap[zone.id] = it },
-                                label = { Text("Nb") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.width(70.dp))
-                        }
-                    }
-                } else {
-                    Card(shape = RoundedCornerShape(8.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1))) {
-                        Text("⚠ Aucune zone tarifaire. Créez-en d'abord.", fontSize = 12.sp, color = Color(0xFFE65100), modifier = Modifier.padding(10.dp))
-                    }
-                }
-                HorizontalDivider(color = BorderGray)
-                OutlinedTextField(value = nbPrises, onValueChange = { nbPrises = it }, label = { Text("Nb prises électriques") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 3)
-                Row(Modifier.fillMaxWidth().clickable { viendrAnimer = !viendrAnimer }, verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = viendrAnimer, onCheckedChange = { viendrAnimer = it })
-                    Spacer(Modifier.width(8.dp))
-                    Text("Le réservant viendra animer", fontSize = 13.sp, color = TextDark)
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    val zones = zonesMap.entries.filter { (_, v) -> v.toIntOrNull() != null && v.toInt() > 0 }
-                        .map { (id, v) -> ZoneReserveeRequest(id, v.toInt()) }
-                    onConfirm(selectedReservantId!!, nbPrises.toIntOrNull() ?: 0, notes.ifBlank { null }, viendrAnimer, zones)
-                },
-                enabled = canConfirm, colors = ButtonDefaults.buttonColors(containerColor = TextDark)
-            ) {
-                if (isLoading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
-                else Text("Créer", color = Color.White)
-            }
-        },
-        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Annuler") } }
-    )
-}
-
-@Composable
-private fun EditReservationDialog(
-    detail: ReservationDetailDto, zonesTarifaires: List<ZoneTarifaireDto>,
-    isLoading: Boolean, onDismiss: () -> Unit,
-    onConfirm: (Int, Int, Double, String?, Boolean, List<ZoneReserveeRequest>) -> Unit
-) {
-    var nbPrises      by remember { mutableStateOf(detail.nb_prises_electriques.toString()) }
-    var remiseTables  by remember { mutableStateOf(detail.remise_tables.toString()) }
-    var remiseMontant by remember { mutableStateOf(detail.remise_montant.toString()) }
-    var notes         by remember { mutableStateOf(detail.notes ?: "") }
-    var viendrAnimer  by remember { mutableStateOf(detail.viendra_animer) }
-    val zonesMap = remember {
-        mutableStateMapOf<Int, String>().also { map ->
-            detail.zones_reservees.forEach { z -> map[z.zone_tarifaire_id] = z.nombre_tables.toString() }
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Modifier la réservation", fontWeight = FontWeight.Bold) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(detail.reservant_nom, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = AccentBlue)
-                if (zonesTarifaires.isNotEmpty()) {
-                    Text("Tables par zone tarifaire", fontSize = 13.sp, color = TextGray, fontWeight = FontWeight.Medium)
-                    zonesTarifaires.forEach { zone ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(zone.nom, fontSize = 13.sp, color = TextDark)
-                                Text("%.2f €/table".format(zone.prix_table), fontSize = 11.sp, color = TextGray)
-                            }
-                            OutlinedTextField(value = zonesMap[zone.id] ?: "", onValueChange = { zonesMap[zone.id] = it },
-                                label = { Text("Nb") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.width(70.dp))
-                        }
-                    }
-                    HorizontalDivider(color = BorderGray)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(value = nbPrises, onValueChange = { nbPrises = it }, label = { Text("Prises élec.") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
-                    OutlinedTextField(value = remiseTables, onValueChange = { remiseTables = it }, label = { Text("Remise tables") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
-                }
-                OutlinedTextField(value = remiseMontant, onValueChange = { remiseMontant = it }, label = { Text("Remise montant (€)") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 3)
-                Row(Modifier.fillMaxWidth().clickable { viendrAnimer = !viendrAnimer }, verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = viendrAnimer, onCheckedChange = { viendrAnimer = it })
-                    Spacer(Modifier.width(8.dp)); Text("Viendra animer", fontSize = 13.sp, color = TextDark)
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    val zones = zonesMap.entries.filter { (_, v) -> v.toIntOrNull() != null && v.toInt() > 0 }
-                        .map { (id, v) -> ZoneReserveeRequest(id, v.toInt()) }
-                    onConfirm(nbPrises.toIntOrNull() ?: 0, remiseTables.toIntOrNull() ?: 0, remiseMontant.toDoubleOrNull() ?: 0.0, notes.ifBlank { null }, viendrAnimer, zones)
-                },
-                enabled = !isLoading, colors = ButtonDefaults.buttonColors(containerColor = TextDark)
-            ) {
-                if (isLoading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
-                else Text("Enregistrer", color = Color.White)
-            }
-        },
-        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Annuler") } }
-    )
 }
 
 @Composable

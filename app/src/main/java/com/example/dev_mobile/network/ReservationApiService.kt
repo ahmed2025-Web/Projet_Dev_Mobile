@@ -65,6 +65,37 @@ data class ContactRelanceDto(
     val created_at: String? = null
 )
 
+// ── DTOs Jeux Festival ────────────────────────────────────────────────────────
+
+data class JeuFestivalDto(
+    val id: Int,
+    val reservation_id: Int,
+    val jeu_id: Int,
+    val jeu_nom: String? = null,
+    val editeur_nom: String? = null,
+    val zone_plan_id: Int? = null,
+    val zone_plan_nom: String? = null,
+    val nombre_exemplaires: Int = 1,
+    val tables_allouees: Double = 1.0,
+    val nb_tables_std: Int = 0,
+    val nb_tables_gde: Int = 0,
+    val nb_tables_mairie: Int = 0,
+    val jeu_recu: Boolean = false,
+    val est_place: Boolean = false,
+    val created_at: String? = null,
+    val updated_at: String? = null
+)
+
+data class AddJeuFestivalRequest(
+    val jeu_id: Int,
+    val nombre_exemplaires: Int = 1,
+    val tables_allouees: Double = 1.0
+)
+
+data class UpdateJeuRecuRequest(
+    val jeu_recu: Boolean
+)
+
 data class ReservationDetailDto(
     val id: Int,
     val festival_id: Int,
@@ -94,7 +125,7 @@ data class ReservationDetailDto(
     val nb_jeux_recus: Int = 0,
     val contacts: List<ContactRelanceDto> = emptyList(),
     val zones_reservees: List<ZoneReserveeDto> = emptyList(),
-    val jeux: List<Any> = emptyList()
+    val jeux: List<JeuFestivalDto> = emptyList()
 )
 
 // ── Requests ──────────────────────────────────────────────────────────────────
@@ -198,5 +229,25 @@ interface ReservationApiService {
         @Path("id") id: Int,
         @Body body: AddContactRelanceRequest
     ): Response<ContactRelanceDto>
-}
 
+    // ── Jeux de la réservation ─────────────────────────────────────────────────
+
+    @POST("api/reservations/{id}/jeux")
+    suspend fun addJeu(
+        @Path("id") id: Int,
+        @Body body: AddJeuFestivalRequest
+    ): Response<JeuFestivalDto>
+
+    @DELETE("api/reservations/{id}/jeux/{jeuFestivalId}")
+    suspend fun removeJeu(
+        @Path("id") id: Int,
+        @Path("jeuFestivalId") jeuFestivalId: Int
+    ): Response<ReservationActionResponse>
+
+    @PATCH("api/reservations/{id}/jeux/{jeuFestivalId}/recu")
+    suspend fun updateJeuRecu(
+        @Path("id") id: Int,
+        @Path("jeuFestivalId") jeuFestivalId: Int,
+        @Body body: UpdateJeuRecuRequest
+    ): Response<JeuFestivalDto>
+}
