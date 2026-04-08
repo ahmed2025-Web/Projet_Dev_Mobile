@@ -25,6 +25,7 @@ import com.example.dev_mobile.ui.public.VuesPubliquesScreen
 import com.example.dev_mobile.ui.reservants.ReservantScreen
 import com.example.dev_mobile.ui.reservations.ReservationScreen
 import com.example.dev_mobile.ui.theme.DevMobileTheme
+import com.example.dev_mobile.ui.zones.ZonesScreen
 
 enum class AuthScreen { LOGIN, REGISTER, PENDING, APP }
 
@@ -33,7 +34,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         // INITIALISATION RÉSEAU (OFFLINE FIRST)
-        // On initialise le client ici pour qu'il puisse charger les tokens sauvegardés sur le disque
         RetrofitClient.init(this)
 
         enableEdgeToEdge()
@@ -52,7 +52,6 @@ fun AppRoot() {
 
     var authScreen by remember { mutableStateOf(AuthScreen.LOGIN) }
 
-    // Vérification de la session (Nom + Rôle) au lancement
     LaunchedEffect(Unit) {
         authViewModel.checkSession()
     }
@@ -126,7 +125,7 @@ fun MainApp(onLogout: () -> Unit) {
             AppDestination.Administration -> AdministrationScreen()
 
             AppDestination.JeuxEditeurs   -> JeuxEditeursScreen()
-            AppDestination.Zones          -> PlaceholderScreen("Zones", "🗺️")
+            AppDestination.Zones          -> ZonesScreen()
             AppDestination.VuesPubliques -> VuesPubliquesScreen(
                 festivalId  = mainState.festivalCourantId ?: -1,
                 festivalNom = mainState.festivalCourantNom,
