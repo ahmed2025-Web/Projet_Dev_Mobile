@@ -11,6 +11,8 @@ import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 
+// Android bloque la connexion car il ne peut pas verifier l'identité du serveur et des certificats autosignés., c pour ca on utilise trustManager
+// qui accept toutes les connexions et certificats
 private val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
     override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
     override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
@@ -40,7 +42,7 @@ object RetrofitClient {
         
         OkHttpClient.Builder()
             .sslSocketFactory(sslContext.socketFactory, trustAllCerts[0] as X509TrustManager)
-            .hostnameVerifier { _, _ -> true }
+            .hostnameVerifier { _, _ -> true } // accepte la connexion meme si le nom de l'url c pas le meme que celui dans les certif
             .cookieJar(_cookieJar ?: throw IllegalStateException("RetrofitClient non initialisé. Appelez init(context) dans MainActivity."))
             .addInterceptor(HttpLoggingInterceptor().apply {
                 level = HttpLoggingInterceptor.Level.BODY

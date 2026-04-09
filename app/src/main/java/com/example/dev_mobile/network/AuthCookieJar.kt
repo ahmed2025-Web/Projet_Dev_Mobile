@@ -14,8 +14,10 @@ import okhttp3.HttpUrl
  */
 class AuthCookieJar(context: Context) : CookieJar {
 
+    // stocker dans le disque dur pour pouvoir rallumer l'app sans se connecter à nouveau
     private val prefs: SharedPreferences = context.getSharedPreferences("auth_cookies_storage", Context.MODE_PRIVATE)
     private val gson = Gson()
+    // stocker dans la Ram (c plus rapide)
     private val cookies = mutableListOf<Cookie>()
 
     init {

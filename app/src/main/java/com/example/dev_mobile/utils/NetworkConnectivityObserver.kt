@@ -22,7 +22,7 @@ class NetworkConnectivityObserver(context: Context) {
     private val connectivityManager =
         context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
-    val networkStatus: Flow<NetworkStatus> = callbackFlow {
+    val networkStatus: Flow<NetworkStatus> = callbackFlow { // pour transformer un callback (API Android) en flow avec callbackFlow
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 trySend(NetworkStatus.Available)

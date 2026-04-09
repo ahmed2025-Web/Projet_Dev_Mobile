@@ -48,8 +48,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 // Mise à jour de l'état global de connexion
                 _uiState.update { it.copy(isOnline = isOnline) }
 
-                // LOGIQUE INTELLIGENTE : Si la connexion revient, on rafraîchit automatiquement 
-                // les données pour synchroniser le cache local avec le serveur Render.
+                // Si la connexion revient, on rafraîchit automatiquement
+                // les données pour synchroniser le cache local avec le serveur .
                 if (isOnline) {
                     loadFestivalCourant()
                 }

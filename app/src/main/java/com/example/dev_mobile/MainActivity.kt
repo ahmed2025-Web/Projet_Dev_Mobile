@@ -52,6 +52,7 @@ fun AppRoot() {
 
     var authScreen by remember { mutableStateOf(AuthScreen.LOGIN) }
 
+    //verification unique de session pour que ca verifie pas a chaque petit mouvement de l'ecran
     LaunchedEffect(Unit) {
         authViewModel.checkSession()
     }
