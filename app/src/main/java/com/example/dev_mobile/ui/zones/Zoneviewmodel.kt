@@ -43,8 +43,8 @@ class ZoneViewModel(application: Application) : AndroidViewModel(application) {
 
             _uiState.update {
                 it.copy(
-                    festivalId          = festival.id,
-                    festivalNom         = festival.nom,
+                    festivalId           = festival.id,
+                    festivalNom          = festival.nom,
                     festivalEspaceTables = festival.espace_tables_total
                 )
             }
@@ -59,7 +59,7 @@ class ZoneViewModel(application: Application) : AndroidViewModel(application) {
 
         _uiState.update {
             it.copy(
-                isLoading = false,
+                isLoading       = false,
                 zonesTarifaires = if (tarifResult is ApiResult.Success) tarifResult.data else it.zonesTarifaires,
                 zonesPlan       = if (planResult  is ApiResult.Success) planResult.data  else it.zonesPlan,
                 errorMessage    = when {
@@ -103,7 +103,7 @@ class ZoneViewModel(application: Application) : AndroidViewModel(application) {
                 is ApiResult.Success -> {
                     _uiState.update {
                         it.copy(
-                            isSubmittingTarifaire    = false,
+                            isSubmittingTarifaire     = false,
                             showCreateTarifaireDialog = false,
                             zonesTarifaires           = it.zonesTarifaires + r.data,
                             successMessage            = "Zone tarifaire « ${r.data.nom} » créée ✅"
@@ -129,7 +129,7 @@ class ZoneViewModel(application: Application) : AndroidViewModel(application) {
             when (val r = repository.updateZoneTarifaire(id, req)) {
                 is ApiResult.Success -> _uiState.update {
                     it.copy(
-                        isSubmittingTarifaire  = false,
+                        isSubmittingTarifaire   = false,
                         showEditTarifaireDialog = false,
                         tarifaireToEdit         = null,
                         zonesTarifaires         = it.zonesTarifaires.map { z -> if (z.id == id) r.data else z },
@@ -183,10 +183,10 @@ class ZoneViewModel(application: Application) : AndroidViewModel(application) {
             when (val r = repository.createZonePlan(festivalId, req)) {
                 is ApiResult.Success -> _uiState.update {
                     it.copy(
-                        isSubmittingPlan    = false,
+                        isSubmittingPlan     = false,
                         showCreatePlanDialog = false,
-                        zonesPlan           = it.zonesPlan + r.data,
-                        successMessage      = "Zone du plan « ${r.data.nom} » créée ✅"
+                        zonesPlan            = it.zonesPlan + r.data,
+                        successMessage       = "Zone du plan « ${r.data.nom} » créée ✅"
                     )
                 }
                 is ApiResult.Error -> _uiState.update {
@@ -231,6 +231,92 @@ class ZoneViewModel(application: Application) : AndroidViewModel(application) {
                 is ApiResult.Error -> _uiState.update {
                     it.copy(isSubmittingPlan = false, errorMessage = r.message)
                 }
+            }
+        }
+    }
+
+    // ── Placement des jeux ────────────────────────────────────────────────────
+
+    fun openPlacerJeuDialog(zone: ZonePlanDetailDto) {
+        _uiState.update {
+            it.copy(
+                zonePlanForPlacement = zone,
+                showPlacerJeuDialog  = true,
+                jeuxDisponibles      = emptyList()
+            )
+        }
+        chargerJeuxDisponibles()
+    }
+
+    fun closePlacerJeuDialog() {
+        _uiState.update {
+            it.copy(
+                showPlacerJeuDialog  = false,
+                zonePlanForPlacement = null,
+                jeuxDisponibles      = emptyList()
+            )
+        }
+    }
+
+    private fun chargerJeuxDisponibles() {
+        val festivalId = _uiState.value.festivalId
+        if (festivalId <= 0) return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingJeux = true) }
+            when (val r = repository.getJeuxFestival(festivalId)) {
+                is ApiResult.Success -> _uiState.update {
+                    it.copy(isLoadingJeux = false, jeuxDisponibles = r.data)
+                }
+                is ApiResult.Error -> _uiState.update {
+                    it.copy(isLoadingJeux = false, errorMessage = r.message)
+                }
+            }
+        }
+    }
+
+    fun placerJeu(jeuId: Int, nbTables: Int, typeTable: String) {
+        val zone = _uiState.value.zonePlanForPlacement ?: return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSubmittingPlacement = true, errorMessage = null) }
+            val req = PlacerJeuRequest(jeu_id = jeuId, nb_tables = nbTables, type_table = typeTable)
+            when (val r = repository.placerJeu(zone.id, req)) {
+                is ApiResult.Success -> {
+                    _uiState.update {
+                        it.copy(
+                            isSubmittingPlacement = false,
+                            showPlacerJeuDialog   = false,
+                            zonePlanForPlacement  = null,
+                            zonesPlan             = it.zonesPlan.map { z ->
+                                if (z.id == zone.id) r.data else z
+                            },
+                            successMessage        = "Jeu placé dans « ${zone.nom} » ✅"
+                        )
+                    }
+                }
+                is ApiResult.Error -> _uiState.update {
+                    it.copy(isSubmittingPlacement = false, errorMessage = r.message)
+                }
+            }
+        }
+    }
+
+    fun retirerJeu(zoneId: Int, jeuId: Int) {
+        viewModelScope.launch {
+            when (val r = repository.retirerJeu(zoneId, jeuId)) {
+                is ApiResult.Success -> {
+                    // Recharger la zone après retrait
+                    val festivalId = _uiState.value.festivalId
+                    val planResult = repository.getZonesPlan(festivalId)
+                    _uiState.update {
+                        it.copy(
+                            zonesPlan      = if (planResult is ApiResult.Success) planResult.data else it.zonesPlan,
+                            successMessage = "Jeu retiré ✅"
+                        )
+                    }
+                }
+                is ApiResult.Error -> _uiState.update { it.copy(errorMessage = r.message) }
             }
         }
     }

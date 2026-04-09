@@ -1,6 +1,7 @@
 // app/src/main/java/com/example/dev_mobile/ui/zones/ZoneUiState.kt
 package com.example.dev_mobile.ui.zones
 
+import com.example.dev_mobile.network.JeuDisponibleDto
 import com.example.dev_mobile.network.ZonePlanDetailDto
 import com.example.dev_mobile.network.ZoneTarifaireDetailDto
 
@@ -23,6 +24,13 @@ data class ZoneUiState(
     val showCreatePlanDialog: Boolean = false,
     val showEditPlanDialog: Boolean = false,
     val planToEdit: ZonePlanDetailDto? = null,
+
+    // Placement des jeux
+    val zonePlanForPlacement: ZonePlanDetailDto? = null, // zone sélectionnée pour placer un jeu
+    val showPlacerJeuDialog: Boolean = false,
+    val jeuxDisponibles: List<JeuDisponibleDto> = emptyList(),
+    val isLoadingJeux: Boolean = false,
+    val isSubmittingPlacement: Boolean = false,
 
     // Festival courant
     val festivalId: Int = -1,

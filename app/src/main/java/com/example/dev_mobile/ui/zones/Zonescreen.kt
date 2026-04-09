@@ -23,11 +23,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.dev_mobile.network.JeuDisponibleDto
 import com.example.dev_mobile.network.ZonePlanDetailDto
 import com.example.dev_mobile.network.ZoneTarifaireDetailDto
 import com.example.dev_mobile.session.UserSession
 
-// ── Palette ───────────────────────────────────────────────────────────────────
+// ── Palette ──────────────────────────────────────────────────────────────────
 private val AccentBlue   = Color(0xFF4A7FC1)
 private val AccentGreen  = Color(0xFF388E3C)
 private val AccentOrange = Color(0xFFE65100)
@@ -119,13 +120,13 @@ fun ZonesScreen(vm: ZoneViewModel = viewModel()) {
                             },
                             enabled = state.festivalId > 0,
                             shape  = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = TextDark)
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
                         ) {
                             Text(
                                 if (state.activeTab == ZoneTab.TARIFAIRES)
                                     "+ Zone tarifaire"
                                 else
-                                    "+ Zone du plan",
+                                    "+ Nouvelle Zone",
                                 fontSize = 13.sp,
                                 color    = Color.White
                             )
@@ -141,13 +142,13 @@ fun ZonesScreen(vm: ZoneViewModel = viewModel()) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     ZoneTabButton(
-                        label    = "Zones tarifaires (${state.zonesTarifaires.size})",
+                        label    = "💰 Tarifaires (${state.zonesTarifaires.size})",
                         selected = state.activeTab == ZoneTab.TARIFAIRES,
                         onClick  = { vm.setTab(ZoneTab.TARIFAIRES) },
                         modifier = Modifier.weight(1f)
                     )
                     ZoneTabButton(
-                        label    = "Zones du plan (${state.zonesPlan.size})",
+                        label    = "🗺️ Plan (${state.zonesPlan.size})",
                         selected = state.activeTab == ZoneTab.PLAN,
                         onClick  = { vm.setTab(ZoneTab.PLAN) },
                         modifier = Modifier.weight(1f)
@@ -188,13 +189,13 @@ fun ZonesScreen(vm: ZoneViewModel = viewModel()) {
 
                 state.activeTab == ZoneTab.TARIFAIRES ->
                     ZonesTarifairesTab(
-                        zones        = state.zonesTarifaires,
+                        zones         = state.zonesTarifaires,
                         festivalTotal = state.festivalEspaceTables,
-                        canManage    = canManage,
-                        canAdmin     = canAdmin,
-                        onEdit       = { vm.openEditTarifaireDialog(it) },
-                        onDelete     = { vm.deleteZoneTarifaire(it.id) },
-                        onRefresh    = { vm.refresh() }
+                        canManage     = canManage,
+                        canAdmin      = canAdmin,
+                        onEdit        = { vm.openEditTarifaireDialog(it) },
+                        onDelete      = { vm.deleteZoneTarifaire(it.id) },
+                        onRefresh     = { vm.refresh() }
                     )
 
                 else ->
@@ -204,7 +205,9 @@ fun ZonesScreen(vm: ZoneViewModel = viewModel()) {
                         canAdmin  = canAdmin,
                         onEdit    = { vm.openEditPlanDialog(it) },
                         onDelete  = { vm.deleteZonePlan(it.id) },
-                        onRefresh = { vm.refresh() }
+                        onPlacer  = { vm.openPlacerJeuDialog(it) },
+                        onRefresh = { vm.refresh() },
+                        onRetirerJeu = { zoneId, jeuId -> vm.retirerJeu(zoneId, jeuId) }
                     )
             }
         }
@@ -257,6 +260,21 @@ fun ZonesScreen(vm: ZoneViewModel = viewModel()) {
             onConfirm = { nom, nb -> vm.updateZonePlan(state.planToEdit!!.id, nom, nb) }
         )
     }
+
+    // ── Dialogue Placer un jeu ────────────────────────────────────────────────
+
+    if (state.showPlacerJeuDialog && state.zonePlanForPlacement != null) {
+        PlacerJeuDialog(
+            zone             = state.zonePlanForPlacement!!,
+            jeuxDisponibles  = state.jeuxDisponibles,
+            isLoadingJeux    = state.isLoadingJeux,
+            isSubmitting     = state.isSubmittingPlacement,
+            onDismiss        = { vm.closePlacerJeuDialog() },
+            onConfirm        = { jeuId, nbTables, typeTable ->
+                vm.placerJeu(jeuId, nbTables, typeTable)
+            }
+        )
+    }
 }
 
 // ── Tab Zones Tarifaires ──────────────────────────────────────────────────────
@@ -281,10 +299,9 @@ private fun ZonesTarifairesTab(
         return
     }
 
-    // Résumé en haut
-    val totalZones    = zones.sumOf { it.nombre_tables_total }
-    val totalReserv   = zones.sumOf { it.tables_reservees }
-    val totalDispo    = zones.sumOf { it.tables_disponibles }
+    val totalTables  = zones.sumOf { it.nombre_tables_total }
+    val totalReserv  = zones.sumOf { it.tables_reservees }
+    val totalDispo   = zones.sumOf { it.tables_disponibles }
 
     LazyColumn(
         contentPadding      = PaddingValues(16.dp),
@@ -293,7 +310,7 @@ private fun ZonesTarifairesTab(
         item {
             ZoneSummaryCard(
                 items = listOf(
-                    Triple("🗺️", "$totalZones", "Tables totales"),
+                    Triple("🗺️", "$totalTables", "Tables totales"),
                     Triple("📋", "$totalReserv", "Réservées"),
                     Triple("✅", "$totalDispo", "Disponibles")
                 )
@@ -334,7 +351,6 @@ private fun ZoneTarifaireCard(
         modifier  = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(16.dp)) {
-            // Header
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier
@@ -369,7 +385,7 @@ private fun ZoneTarifaireCard(
                         onClick  = { showDeleteDlg = true },
                         modifier = Modifier.size(36.dp)
                     ) {
-                        Text("🗑", fontSize = 16.sp, color = ErrorRed)
+                        Text("🗑", fontSize = 16.sp)
                     }
                 }
             }
@@ -378,21 +394,25 @@ private fun ZoneTarifaireCard(
             HorizontalDivider(color = DividerCol)
             Spacer(Modifier.height(10.dp))
 
-            // Barre d'occupation
             Text("Occupation", fontSize = 11.sp, color = TextGray, fontWeight = FontWeight.Medium)
             Spacer(Modifier.height(4.dp))
             LinearProgressIndicator(
-                progress        = { occupationRatio },
-                modifier        = Modifier
+                progress   = { occupationRatio },
+                modifier   = Modifier
                     .fillMaxWidth()
                     .height(8.dp)
                     .clip(RoundedCornerShape(4.dp)),
-                color           = if (occupationRatio > 0.8f) ErrorRed else AccentBlue,
-                trackColor      = Color(0xFFE8EEF7)
+                color      = if (occupationRatio > 0.8f) ErrorRed else AccentBlue,
+                trackColor = Color(0xFFE8EEF7)
             )
-            Spacer(Modifier.height(6.dp))
+            Text(
+                "${zone.tables_reservees} / ${zone.nombre_tables_total} tables",
+                fontSize = 11.sp,
+                color    = TextGray,
+                modifier = Modifier.align(Alignment.End)
+            )
+            Spacer(Modifier.height(8.dp))
 
-            // Stats
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ZoneStatChip("📋", "${zone.tables_reservees}", "Réservées", Modifier.weight(1f))
                 ZoneStatChip("✅", "${zone.tables_disponibles}", "Disponibles", Modifier.weight(1f))
@@ -421,7 +441,9 @@ private fun ZonesPlanTab(
     canAdmin: Boolean,
     onEdit: (ZonePlanDetailDto) -> Unit,
     onDelete: (ZonePlanDetailDto) -> Unit,
-    onRefresh: () -> Unit
+    onPlacer: (ZonePlanDetailDto) -> Unit,
+    onRefresh: () -> Unit,
+    onRetirerJeu: (zoneId: Int, jeuId: Int) -> Unit
 ) {
     if (zones.isEmpty()) {
         EmptyZoneState(
@@ -433,31 +455,36 @@ private fun ZonesPlanTab(
         return
     }
 
-    val totalTables  = zones.sumOf { it.nombre_tables_total }
-    val totalUtilis  = zones.sumOf { it.tables_utilisees ?: 0 }
-    val totalJeux    = zones.sumOf { it.nb_jeux_places }
+    val totalTables = zones.sumOf { it.nombre_tables_total }
+    val totalUtil   = zones.sumOf { it.tables_utilisees ?: 0 }
+    val totalJeux   = zones.sumOf { it.nb_jeux_places }
+    val occRate     = if (totalTables > 0) (totalUtil.toFloat() / totalTables * 100).toInt() else 0
 
     LazyColumn(
         contentPadding      = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
+            // Résumé global comme dans le mockup
             ZoneSummaryCard(
                 items = listOf(
-                    Triple("🗺️", "$totalTables", "Tables totales"),
+                    Triple("🗺️", "${zones.size}", "Zones"),
                     Triple("🎮", "$totalJeux", "Jeux placés"),
-                    Triple("📦", "$totalUtilis", "Tables utilisées")
+                    Triple("📦", "$totalUtil / $totalTables", "Tables utilisées"),
+                    Triple("📊", "$occRate%", "Taux occupation")
                 )
             )
         }
 
         items(zones, key = { it.id }) { zone ->
             ZonePlanCard(
-                zone      = zone,
-                canManage = canManage,
-                canAdmin  = canAdmin,
-                onEdit    = { onEdit(zone) },
-                onDelete  = { onDelete(zone) }
+                zone         = zone,
+                canManage    = canManage,
+                canAdmin     = canAdmin,
+                onEdit       = { onEdit(zone) },
+                onDelete     = { onDelete(zone) },
+                onPlacer     = { onPlacer(zone) },
+                onRetirerJeu = { jeuId -> onRetirerJeu(zone.id, jeuId) }
             )
         }
 
@@ -471,11 +498,13 @@ private fun ZonePlanCard(
     canManage: Boolean,
     canAdmin: Boolean,
     onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onPlacer: () -> Unit,
+    onRetirerJeu: (jeuId: Int) -> Unit
 ) {
     var showDeleteDlg by remember { mutableStateOf(false) }
 
-    val utilisees      = zone.tables_utilisees ?: 0
+    val utilisees       = zone.tables_utilisees ?: 0
     val occupationRatio = if (zone.nombre_tables_total > 0)
         utilisees.toFloat() / zone.nombre_tables_total else 0f
 
@@ -486,6 +515,8 @@ private fun ZonePlanCard(
         modifier  = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(16.dp)) {
+
+            // Header
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier
@@ -510,22 +541,45 @@ private fun ZonePlanCard(
                         color    = TextGray
                     )
                 }
+                // Bouton "Placer jeux" (comme dans le mockup)
                 if (canManage) {
-                    IconButton(onClick = onEdit, modifier = Modifier.size(36.dp)) {
-                        Text("✏️", fontSize = 16.sp)
-                    }
-                }
-                if (canAdmin) {
-                    IconButton(
-                        onClick  = { showDeleteDlg = true },
-                        modifier = Modifier.size(36.dp)
+                    Button(
+                        onClick = onPlacer,
+                        shape  = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier.height(34.dp)
                     ) {
-                        Text("🗑", fontSize = 16.sp, color = ErrorRed)
+                        Text("Placer jeux", fontSize = 12.sp, color = Color.White)
                     }
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
+            // Actions edit/delete
+            if (canManage || canAdmin) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    if (canManage) {
+                        TextButton(
+                            onClick = onEdit,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text("✏️ Modifier", fontSize = 11.sp, color = AccentBlue)
+                        }
+                    }
+                    if (canAdmin) {
+                        TextButton(
+                            onClick = { showDeleteDlg = true },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text("🗑 Supprimer", fontSize = 11.sp, color = ErrorRed)
+                        }
+                    }
+                }
+            }
+
             HorizontalDivider(color = DividerCol)
             Spacer(Modifier.height(10.dp))
 
@@ -538,20 +592,107 @@ private fun ZonePlanCard(
                     .fillMaxWidth()
                     .height(8.dp)
                     .clip(RoundedCornerShape(4.dp)),
-                color      = if (occupationRatio > 0.8f) ErrorRed else AccentGreen,
-                trackColor = Color(0xFFE8F5E9)
+                color      = if (occupationRatio > 0.8f) ErrorRed else AccentOrange,
+                trackColor = Color(0xFFF0F0F0)
             )
-            Spacer(Modifier.height(6.dp))
+            Text(
+                "$utilisees / ${zone.nombre_tables_total} tables",
+                fontSize = 11.sp,
+                color    = TextGray,
+                modifier = Modifier.align(Alignment.End)
+            )
+            Spacer(Modifier.height(8.dp))
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ZoneStatChip("📦", "$utilisees", "Utilisées", Modifier.weight(1f))
                 ZoneStatChip(
                     "✅",
-                    "${(zone.tables_disponibles ?: (zone.nombre_tables_total - utilisees))}",
+                    "${zone.tables_disponibles ?: (zone.nombre_tables_total - utilisees)}",
                     "Libres",
                     Modifier.weight(1f)
                 )
                 ZoneStatChip("🎮", "${zone.nb_jeux_places}", "Jeux", Modifier.weight(1f))
+            }
+
+            // Liste des jeux placés (comme dans le mockup)
+            if (zone.jeux_places.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                HorizontalDivider(color = DividerCol)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Jeux placés (${zone.jeux_places.size}) :",
+                    fontSize   = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color      = TextDark
+                )
+                Spacer(Modifier.height(6.dp))
+                zone.jeux_places.forEach { jeuPlace ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                jeuPlace.nom_jeu.ifBlank { "Jeu #${jeuPlace.jeu_id}" },
+                                fontSize   = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color      = TextDark
+                            )
+                            Text(
+                                "${jeuPlace.nom_editeur.ifBlank { "" }} · ${jeuPlace.nb_exemplaires} ex. · ${jeuPlace.nb_tables} table(s)",
+                                fontSize = 11.sp,
+                                color    = TextGray
+                            )
+                        }
+                        // Badge type de table
+                        val typeLabel = when (jeuPlace.type_table) {
+                            "grande"  -> "Gde"
+                            "mairie"  -> "Mrie"
+                            else      -> "Std"
+                        }
+                        val typeColor = when (jeuPlace.type_table) {
+                            "grande" -> AccentOrange.copy(alpha = 0.15f)
+                            "mairie" -> AccentGreen.copy(alpha = 0.15f)
+                            else     -> AccentBlue.copy(alpha = 0.15f)
+                        }
+                        val typeTextColor = when (jeuPlace.type_table) {
+                            "grande" -> AccentOrange
+                            "mairie" -> AccentGreen
+                            else     -> AccentBlue
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = typeColor
+                        ) {
+                            Text(
+                                typeLabel,
+                                fontSize   = 11.sp,
+                                color      = typeTextColor,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier   = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                        if (canManage) {
+                            Spacer(Modifier.width(6.dp))
+                            IconButton(
+                                onClick  = { onRetirerJeu(jeuPlace.jeu_id) },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Text("✕", fontSize = 12.sp, color = ErrorRed)
+                            }
+                        }
+                    }
+                    HorizontalDivider(color = DividerCol.copy(alpha = 0.5f))
+                }
+            } else if (canManage) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Aucun jeu placé — cliquez sur « Placer jeux »",
+                    fontSize = 11.sp,
+                    color    = TextGray
+                )
             }
         }
     }
@@ -605,7 +746,7 @@ private fun ZoneSummaryCard(items: List<Triple<String, String, String>>) {
             Modifier
                 .fillMaxWidth()
                 .padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             items.forEach { (icon, value, label) ->
                 Surface(
@@ -614,17 +755,18 @@ private fun ZoneSummaryCard(items: List<Triple<String, String, String>>) {
                     color    = PageBg
                 ) {
                     Column(
-                        Modifier.padding(10.dp),
+                        Modifier.padding(8.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text(icon, fontSize = 16.sp)
+                        Text(icon, fontSize = 14.sp)
                         Text(
                             value,
-                            fontSize   = 16.sp,
+                            fontSize   = 14.sp,
                             fontWeight = FontWeight.Bold,
-                            color      = TextDark
+                            color      = TextDark,
+                            maxLines   = 1
                         )
-                        Text(label, fontSize = 9.sp, color = TextGray)
+                        Text(label, fontSize = 9.sp, color = TextGray, maxLines = 1)
                     }
                 }
             }
@@ -640,7 +782,7 @@ private fun ZoneStatChip(icon: String, value: String, label: String, modifier: M
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(icon, fontSize = 14.sp)
-            Text(value, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextDark)
+            Text(value, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextDark, maxLines = 1)
             Text(label, fontSize = 9.sp, color = TextGray)
         }
     }
@@ -666,7 +808,7 @@ private fun EmptyZoneState(
     }
 }
 
-// ── Dialogues de formulaire ───────────────────────────────────────────────────
+// ── Dialogues ─────────────────────────────────────────────────────────────────
 
 @Composable
 private fun ZoneTarifaireFormDialog(
@@ -676,13 +818,13 @@ private fun ZoneTarifaireFormDialog(
     onDismiss: () -> Unit,
     onConfirm: (nom: String, nbTables: Int, prixTable: Double, prixM2: Double?) -> Unit
 ) {
-    var nom        by remember { mutableStateOf(initial?.nom ?: "") }
-    var nbTables   by remember { mutableStateOf(initial?.nombre_tables_total?.toString() ?: "") }
-    var prixTable  by remember { mutableStateOf(initial?.prix_table?.toString() ?: "") }
-    var prixM2     by remember { mutableStateOf(initial?.prix_m2?.toString() ?: "") }
+    var nom       by remember { mutableStateOf(initial?.nom ?: "") }
+    var nbTables  by remember { mutableStateOf(initial?.nombre_tables_total?.toString() ?: "") }
+    var prixTable by remember { mutableStateOf(initial?.prix_table?.toString() ?: "") }
+    var prixM2    by remember { mutableStateOf(initial?.prix_m2?.toString() ?: "") }
 
     val canConfirm = nom.isNotBlank() &&
-            nbTables.toIntOrNull() != null && (nbTables.toIntOrNull() ?: 0) > 0 &&
+            (nbTables.toIntOrNull() ?: 0) > 0 &&
             prixTable.toDoubleOrNull() != null && !isLoading
 
     AlertDialog(
@@ -701,37 +843,35 @@ private fun ZoneTarifaireFormDialog(
                     modifier      = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
-                    value          = nbTables,
-                    onValueChange  = { nbTables = it },
-                    label          = { Text("Nombre de tables *") },
-                    singleLine     = true,
+                    value           = nbTables,
+                    onValueChange   = { nbTables = it },
+                    label           = { Text("Nombre de tables *") },
+                    singleLine      = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier       = Modifier.fillMaxWidth()
+                    modifier        = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
-                    value          = prixTable,
-                    onValueChange  = {
+                    value           = prixTable,
+                    onValueChange   = {
                         prixTable = it
-                        // Auto-calculer le prix m² si vide
                         val parsed = it.toDoubleOrNull()
                         if (parsed != null && prixM2.isBlank()) {
                             prixM2 = "%.2f".format(parsed / 4.5)
                         }
                     },
-                    label          = { Text("Prix par table (€) *") },
-                    singleLine     = true,
+                    label           = { Text("Prix par table (€) *") },
+                    singleLine      = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier       = Modifier.fillMaxWidth()
+                    modifier        = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
-                    value          = prixM2,
-                    onValueChange  = { prixM2 = it },
-                    label          = { Text("Prix au m² (€) — auto si vide") },
-                    singleLine     = true,
+                    value           = prixM2,
+                    onValueChange   = { prixM2 = it },
+                    label           = { Text("Prix au m² (€) — auto si vide") },
+                    singleLine      = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier       = Modifier.fillMaxWidth()
+                    modifier        = Modifier.fillMaxWidth()
                 )
-                // Hint prix m²
                 Text(
                     "💡 Par défaut : prix table / 4,5",
                     fontSize = 11.sp,
@@ -741,7 +881,7 @@ private fun ZoneTarifaireFormDialog(
         },
         confirmButton = {
             Button(
-                onClick  = {
+                onClick = {
                     onConfirm(
                         nom.trim(),
                         nbTables.toIntOrNull() ?: 0,
@@ -750,19 +890,12 @@ private fun ZoneTarifaireFormDialog(
                     )
                 },
                 enabled = canConfirm,
-                colors  = ButtonDefaults.buttonColors(containerColor = TextDark)
+                colors  = ButtonDefaults.buttonColors(containerColor = AccentBlue)
             ) {
                 if (isLoading)
-                    CircularProgressIndicator(
-                        Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color       = Color.White
-                    )
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
                 else
-                    Text(
-                        if (initial == null) "Créer" else "Enregistrer",
-                        color = Color.White
-                    )
+                    Text(if (initial == null) "Créer" else "Enregistrer", color = Color.White)
             }
         },
         dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Annuler") } }
@@ -781,8 +914,7 @@ private fun ZonePlanFormDialog(
     var nbTables by remember { mutableStateOf(initial?.nombre_tables_total?.toString() ?: "") }
 
     val canConfirm = nom.isNotBlank() &&
-            nbTables.toIntOrNull() != null && (nbTables.toIntOrNull() ?: 0) > 0 &&
-            !isLoading
+            (nbTables.toIntOrNull() ?: 0) > 0 && !isLoading
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -815,19 +947,191 @@ private fun ZonePlanFormDialog(
             Button(
                 onClick  = { onConfirm(nom.trim(), nbTables.toIntOrNull() ?: 0) },
                 enabled  = canConfirm,
-                colors   = ButtonDefaults.buttonColors(containerColor = TextDark)
+                colors   = ButtonDefaults.buttonColors(containerColor = AccentBlue)
             ) {
                 if (isLoading)
-                    CircularProgressIndicator(
-                        Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color       = Color.White
-                    )
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
                 else
+                    Text(if (initial == null) "Créer" else "Enregistrer", color = Color.White)
+            }
+        },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Annuler") } }
+    )
+}
+
+@Composable
+private fun PlacerJeuDialog(
+    zone: ZonePlanDetailDto,
+    jeuxDisponibles: List<JeuDisponibleDto>,
+    isLoadingJeux: Boolean,
+    isSubmitting: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (jeuId: Int, nbTables: Int, typeTable: String) -> Unit
+) {
+    var selectedJeu  by remember { mutableStateOf<JeuDisponibleDto?>(null) }
+    var nbTables     by remember { mutableStateOf("1") }
+    var typeTable    by remember { mutableStateOf("standard") }
+    var searchQuery  by remember { mutableStateOf("") }
+
+    val filteredJeux = if (searchQuery.isBlank()) jeuxDisponibles
+    else jeuxDisponibles.filter {
+        it.nom.contains(searchQuery, ignoreCase = true) ||
+                it.editeur.contains(searchQuery, ignoreCase = true)
+    }
+
+    val canConfirm = selectedJeu != null &&
+            (nbTables.toIntOrNull() ?: 0) > 0 && !isSubmitting
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text("Placer un jeu", fontWeight = FontWeight.Bold)
+                Text(
+                    "dans ${zone.nom}",
+                    fontSize = 12.sp,
+                    color    = AccentBlue
+                )
+            }
+        },
+        text = {
+            Column(
+                Modifier
+                    .verticalScroll(rememberScrollState())
+                    .heightIn(max = 500.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Recherche de jeu
+                OutlinedTextField(
+                    value         = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label         = { Text("Rechercher un jeu...") },
+                    singleLine    = true,
+                    modifier      = Modifier.fillMaxWidth()
+                )
+
+                if (isLoadingJeux) {
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(
+                            modifier    = Modifier.size(32.dp),
+                            color       = AccentBlue,
+                            strokeWidth = 3.dp
+                        )
+                    }
+                } else if (filteredJeux.isEmpty()) {
                     Text(
-                        if (initial == null) "Créer" else "Enregistrer",
-                        color = Color.White
+                        if (searchQuery.isBlank()) "Aucun jeu disponible pour ce festival"
+                        else "Aucun jeu trouvé pour « $searchQuery »",
+                        fontSize = 12.sp,
+                        color    = TextGray
                     )
+                } else {
+                    // Liste des jeux sélectionnables
+                    Text(
+                        "Sélectionner un jeu :",
+                        fontSize   = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color      = TextDark
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        filteredJeux.take(10).forEach { jeu ->
+                            val isSelected = selectedJeu?.id == jeu.id
+                            Surface(
+                                shape    = RoundedCornerShape(8.dp),
+                                color    = if (isSelected) AccentBlue.copy(alpha = 0.12f) else PageBg,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { selectedJeu = jeu }
+                            ) {
+                                Row(
+                                    Modifier.padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = isSelected,
+                                        onClick  = { selectedJeu = jeu },
+                                        colors   = RadioButtonDefaults.colors(
+                                            selectedColor = AccentBlue
+                                        )
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Column {
+                                        Text(
+                                            jeu.nom,
+                                            fontSize   = 13.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color      = TextDark
+                                        )
+                                        Text(
+                                            "${jeu.editeur} · ${jeu.nb_exemplaires} ex.",
+                                            fontSize = 11.sp,
+                                            color    = TextGray
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        if (filteredJeux.size > 10) {
+                            Text(
+                                "... et ${filteredJeux.size - 10} autres (affinez la recherche)",
+                                fontSize = 11.sp,
+                                color    = TextGray
+                            )
+                        }
+                    }
+                }
+
+                if (selectedJeu != null) {
+                    HorizontalDivider(color = DividerCol)
+
+                    // Nb tables
+                    OutlinedTextField(
+                        value           = nbTables,
+                        onValueChange   = { nbTables = it },
+                        label           = { Text("Nombre de tables *") },
+                        singleLine      = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier        = Modifier.fillMaxWidth()
+                    )
+
+                    // Type de table
+                    Text(
+                        "Type de table :",
+                        fontSize   = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color      = TextDark
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("standard" to "Standard", "grande" to "Grande", "mairie" to "Mairie")
+                            .forEach { (value, label) ->
+                                FilterChip(
+                                    selected = typeTable == value,
+                                    onClick  = { typeTable = value },
+                                    label    = { Text(label, fontSize = 12.sp) },
+                                    colors   = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = AccentBlue,
+                                        selectedLabelColor     = Color.White
+                                    )
+                                )
+                            }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    selectedJeu?.let {
+                        onConfirm(it.id, nbTables.toIntOrNull() ?: 1, typeTable)
+                    }
+                },
+                enabled = canConfirm,
+                colors  = ButtonDefaults.buttonColors(containerColor = AccentBlue)
+            ) {
+                if (isSubmitting)
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
+                else
+                    Text("Placer", color = Color.White)
             }
         },
         dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Annuler") } }
@@ -854,7 +1158,7 @@ private fun ConfirmDeleteZoneDialog(
                         colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE))
                     ) {
                         Text(
-                            "⚠ Impossible : $usageText",
+                            "⚠️ Impossible : $usageText",
                             fontSize = 12.sp,
                             color    = ErrorRed,
                             modifier = Modifier.padding(10.dp)

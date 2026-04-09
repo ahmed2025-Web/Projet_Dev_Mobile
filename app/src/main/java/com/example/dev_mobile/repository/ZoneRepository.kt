@@ -9,8 +9,10 @@ class ZoneRepository {
         RetrofitClient.retrofit.create(ZoneTarifaireFullApiService::class.java)
     private val zonePlanApi =
         RetrofitClient.retrofit.create(ZonePlanFullApiService::class.java)
+    private val jeuxApi =
+        RetrofitClient.retrofit.create(JeuxFestivalApiService::class.java)
 
-    // ── Zones Tarifaires ──────────────────────────────────────────────────────
+    // ── Zones Tarifaires ───────────────────────────────────────────────────────
 
     suspend fun getZonesTarifaires(festivalId: Int): ApiResult<List<ZoneTarifaireDetailDto>> = try {
         val r = zoneTarifaireApi.getByFestival(festivalId)
@@ -26,7 +28,7 @@ class ZoneRepository {
     ): ApiResult<ZoneTarifaireDetailDto> = try {
         val r = zoneTarifaireApi.create(festivalId, request)
         if (r.isSuccessful && r.body() != null) ApiResult.Success(r.body()!!)
-        else ApiResult.Error(extractError(r.errorBody()?.string(), "Erreur création"))
+        else ApiResult.Error(extractError(r.errorBody()?.string(), "Erreur création (${r.code()})"))
     } catch (e: Exception) {
         ApiResult.Error("Serveur injoignable : ${e.message}")
     }
@@ -50,7 +52,7 @@ class ZoneRepository {
         ApiResult.Error("Serveur injoignable : ${e.message}")
     }
 
-    // ── Zones du Plan ─────────────────────────────────────────────────────────
+    // ── Zones du Plan ──────────────────────────────────────────────────────────
 
     suspend fun getZonesPlan(festivalId: Int): ApiResult<List<ZonePlanDetailDto>> = try {
         val r = zonePlanApi.getByFestival(festivalId)
@@ -66,7 +68,7 @@ class ZoneRepository {
     ): ApiResult<ZonePlanDetailDto> = try {
         val r = zonePlanApi.create(festivalId, request)
         if (r.isSuccessful && r.body() != null) ApiResult.Success(r.body()!!)
-        else ApiResult.Error(extractError(r.errorBody()?.string(), "Erreur création"))
+        else ApiResult.Error(extractError(r.errorBody()?.string(), "Erreur création (${r.code()})"))
     } catch (e: Exception) {
         ApiResult.Error("Serveur injoignable : ${e.message}")
     }
@@ -90,7 +92,36 @@ class ZoneRepository {
         ApiResult.Error("Serveur injoignable : ${e.message}")
     }
 
-    // ── Helper ────────────────────────────────────────────────────────────────
+    // ── Placement des jeux ─────────────────────────────────────────────────────
+
+    suspend fun placerJeu(
+        zoneId: Int,
+        request: PlacerJeuRequest
+    ): ApiResult<ZonePlanDetailDto> = try {
+        val r = zonePlanApi.placerJeu(zoneId, request)
+        if (r.isSuccessful && r.body() != null) ApiResult.Success(r.body()!!)
+        else ApiResult.Error(extractError(r.errorBody()?.string(), "Erreur placement (${r.code()})"))
+    } catch (e: Exception) {
+        ApiResult.Error("Serveur injoignable : ${e.message}")
+    }
+
+    suspend fun retirerJeu(zoneId: Int, jeuId: Int): ApiResult<Unit> = try {
+        val r = zonePlanApi.retirerJeu(zoneId, jeuId)
+        if (r.isSuccessful) ApiResult.Success(Unit)
+        else ApiResult.Error(extractError(r.errorBody()?.string(), "Erreur retrait"))
+    } catch (e: Exception) {
+        ApiResult.Error("Serveur injoignable : ${e.message}")
+    }
+
+    suspend fun getJeuxFestival(festivalId: Int): ApiResult<List<JeuDisponibleDto>> = try {
+        val r = jeuxApi.getJeuxFestival(festivalId)
+        if (r.isSuccessful) ApiResult.Success(r.body() ?: emptyList())
+        else ApiResult.Error(extractError(r.errorBody()?.string(), "Erreur chargement jeux"))
+    } catch (e: Exception) {
+        ApiResult.Error("Serveur injoignable : ${e.message}")
+    }
+
+    // ── Helper ─────────────────────────────────────────────────────────────────
 
     private fun extractError(raw: String?, fallback: String): String {
         if (raw.isNullOrBlank()) return fallback

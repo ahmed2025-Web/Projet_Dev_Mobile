@@ -1,4 +1,3 @@
-
 // app/src/main/java/com/example/dev_mobile/network/ZoneApiService.kt
 package com.example.dev_mobile.network
 
@@ -34,6 +33,17 @@ data class UpdateZoneTarifaireRequest(
 
 // ── DTOs Zones du Plan ────────────────────────────────────────────────────────
 
+data class JeuPlaceDto(
+    val id: Int,
+    val jeu_id: Int,
+    val zone_plan_id: Int,
+    val nb_tables: Int = 1,
+    val type_table: String = "standard", // standard, grande, mairie
+    val nom_jeu: String = "",
+    val nom_editeur: String = "",
+    val nb_exemplaires: Int = 0
+)
+
 data class ZonePlanDetailDto(
     val id: Int,
     val festival_id: Int,
@@ -41,7 +51,8 @@ data class ZonePlanDetailDto(
     val nombre_tables_total: Int = 0,
     val tables_disponibles: Int? = null,
     val tables_utilisees: Int? = null,
-    val nb_jeux_places: Int = 0
+    val nb_jeux_places: Int = 0,
+    val jeux_places: List<JeuPlaceDto> = emptyList()
 )
 
 data class CreateZonePlanRequest(
@@ -52,6 +63,21 @@ data class CreateZonePlanRequest(
 data class UpdateZonePlanRequest(
     val nom: String? = null,
     val nombre_tables_total: Int? = null
+)
+
+// ── DTOs Placement de jeux ────────────────────────────────────────────────────
+
+data class JeuDisponibleDto(
+    val id: Int,
+    val nom: String,
+    val editeur: String = "",
+    val nb_exemplaires: Int = 0
+)
+
+data class PlacerJeuRequest(
+    val jeu_id: Int,
+    val nb_tables: Int = 1,
+    val type_table: String = "standard"
 )
 
 data class ZoneActionResponse(
@@ -111,4 +137,25 @@ interface ZonePlanFullApiService {
 
     @DELETE("api/zones-plan/{id}")
     suspend fun delete(@Path("id") id: Int): Response<ZoneActionResponse>
+
+    // Placement des jeux dans une zone
+    @POST("api/zones-plan/{zoneId}/jeux")
+    suspend fun placerJeu(
+        @Path("zoneId") zoneId: Int,
+        @Body body: PlacerJeuRequest
+    ): Response<ZonePlanDetailDto>
+
+    @DELETE("api/zones-plan/{zoneId}/jeux/{jeuId}")
+    suspend fun retirerJeu(
+        @Path("zoneId") zoneId: Int,
+        @Path("jeuId") jeuId: Int
+    ): Response<ZoneActionResponse>
+}
+
+// Interface pour récupérer les jeux disponibles d'un festival (réutilise JeuApiService)
+interface JeuxFestivalApiService {
+    @GET("api/jeux/festival/{festivalId}")
+    suspend fun getJeuxFestival(
+        @Path("festivalId") festivalId: Int
+    ): Response<List<JeuDisponibleDto>>
 }
